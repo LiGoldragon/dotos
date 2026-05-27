@@ -37,6 +37,13 @@
             grep -R "design_example_reader_exposes_candidates_not_schema_semantics" ${src}/tests/design_examples.rs >/dev/null
             touch $out
           '';
+          no-escaped-newline-nota-fixtures = pkgs.runCommand "nota-next-no-escaped-newline-nota-fixtures" { } ''
+            if grep -R -n -E 'let source = ".*\\n' ${src}/tests; then
+              echo 'inline NOTA fixtures must use spaces or real newlines in raw strings, not \n escapes' >&2
+              exit 1
+            fi
+            touch $out
+          '';
           doc = craneLib.cargoDoc (commonArguments // {
             inherit cargoArtifacts;
             RUSTDOCFLAGS = "-D warnings";

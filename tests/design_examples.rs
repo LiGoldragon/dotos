@@ -29,7 +29,8 @@ use nota_next::Document;
 /// design contract (positions are real line/column) shows in code.
 #[test]
 fn design_example_source_spans_propagate_through_nested_blocks() {
-    let source = "(Record\n  [Entry])";
+    let source = r#"(Record
+  [Entry])"#;
     let document = Document::parse(source).expect("nota parses");
     let outer = document.root_object_at(0).expect("outer parenthesis");
 

@@ -2,7 +2,7 @@ use nota_next::{AtomClassification, Document, NotaError};
 
 #[test]
 fn parses_ordered_root_objects_and_reemits_from_spans() {
-    let source = "(State [Statement])\n{ Topic [Text] }\n";
+    let source = "(State [Statement]) { Topic [Text] }";
     let document = Document::parse(source).expect("valid nota");
 
     assert_eq!(document.holds_root_objects(), 2);
