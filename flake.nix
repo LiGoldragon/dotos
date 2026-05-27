@@ -32,6 +32,11 @@
         checks = {
           build = craneLib.cargoBuild (commonArguments // { inherit cargoArtifacts; });
           test = craneLib.cargoTest (commonArguments // { inherit cargoArtifacts; });
+          design-examples = pkgs.runCommand "nota-next-design-examples" { } ''
+            grep -R "design_example_source_spans_propagate_through_nested_blocks" ${src}/tests/design_examples.rs >/dev/null
+            grep -R "design_example_reader_exposes_candidates_not_schema_semantics" ${src}/tests/design_examples.rs >/dev/null
+            touch $out
+          '';
           doc = craneLib.cargoDoc (commonArguments // {
             inherit cargoArtifacts;
             RUSTDOCFLAGS = "-D warnings";
