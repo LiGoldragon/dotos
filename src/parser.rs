@@ -511,5 +511,5 @@ fn is_closing_delimiter(character: char) -> bool {
 }
 
 fn is_symbol_character(character: char) -> bool {
-    character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | ':')
 }

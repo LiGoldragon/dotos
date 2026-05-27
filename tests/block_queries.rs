@@ -33,18 +33,20 @@ fn exposes_recursive_shape_predicates() {
 
 #[test]
 fn classifies_atoms_as_candidates_without_schema_semantics() {
-    let document = Document::parse("TypeName field-name camelName 42 7.5").expect("valid nota");
+    let document = Document::parse("TypeName field-name camelName schema:module:Type 42 7.5")
+        .expect("valid nota");
     let roots = document.root_objects();
 
     assert!(roots[0].qualifies_as_pascal_case_symbol());
     assert!(roots[1].qualifies_as_kebab_case_symbol());
     assert!(roots[2].qualifies_as_camel_case_symbol());
+    assert!(roots[3].qualifies_as_symbol());
     assert_eq!(
-        roots[3].atom().expect("atom").classification(),
+        roots[4].atom().expect("atom").classification(),
         AtomClassification::IntegerCandidate
     );
     assert_eq!(
-        roots[4].atom().expect("atom").classification(),
+        roots[5].atom().expect("atom").classification(),
         AtomClassification::DecimalCandidate
     );
 }
