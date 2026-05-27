@@ -35,11 +35,19 @@
           design-examples = pkgs.runCommand "nota-next-design-examples" { } ''
             grep -R "design_example_source_spans_propagate_through_nested_blocks" ${src}/tests/design_examples.rs >/dev/null
             grep -R "design_example_reader_exposes_candidates_not_schema_semantics" ${src}/tests/design_examples.rs >/dev/null
+            grep -R "design_example_structure_header_captures_first_two_levels" ${src}/tests/design_examples.rs >/dev/null
             touch $out
           '';
           no-escaped-newline-nota-fixtures = pkgs.runCommand "nota-next-no-escaped-newline-nota-fixtures" { } ''
             if grep -R -n -E 'let source = ".*\\n' ${src}/tests; then
               echo 'inline NOTA fixtures must use spaces or real newlines in raw strings, not \n escapes' >&2
+              exit 1
+            fi
+            touch $out
+          '';
+          no-production-free-functions = pkgs.runCommand "nota-next-no-production-free-functions" { } ''
+            if grep -R -n -E '^(pub(\([^)]*\))? )?fn ' ${src}/src; then
+              echo "production Rust must not use module-level free functions" >&2
               exit 1
             fi
             touch $out

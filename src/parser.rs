@@ -45,6 +45,12 @@ impl Document {
     pub fn root_object_at(&self, index: usize) -> Option<&Block> {
         self.root_objects.get(index)
     }
+
+    pub fn structure_header(&self) -> StructureHeader {
+        let mut builder = StructureHeaderBuilder::new();
+        builder.push_document(self);
+        builder.finish()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -132,6 +138,13 @@ impl Block {
         }
     }
 
+    pub fn root_objects(&self) -> &[Block] {
+        match self {
+            Self::Delimited { root_objects, .. } => root_objects,
+            Self::PipeText(_) | Self::Atom(_) => &[],
+        }
+    }
+
     pub fn atom(&self) -> Option<&Atom> {
         match self {
             Self::Atom(atom) => Some(atom),
@@ -165,6 +178,29 @@ impl Block {
             Self::Delimited { .. } => None,
         }
     }
+
+    pub fn structure_shape(&self) -> StructureShape {
+        match self {
+            Self::Delimited {
+                delimiter: Delimiter::Parenthesis,
+                ..
+            } => StructureShape::Parenthesis,
+            Self::Delimited {
+                delimiter: Delimiter::SquareBracket,
+                ..
+            } => StructureShape::SquareBracket,
+            Self::Delimited {
+                delimiter: Delimiter::Brace,
+                ..
+            } => StructureShape::Brace,
+            Self::PipeText(_) => StructureShape::PipeText,
+            Self::Atom(_) => StructureShape::Atom,
+        }
+    }
+
+    pub fn structure_slot(&self) -> StructureSlot {
+        StructureSlot::new(self.structure_shape(), self.holds_root_objects())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -189,6 +225,172 @@ impl Delimiter {
             Self::SquareBracket => ']',
             Self::Brace => '}',
         }
+    }
+
+    fn from_opening(character: char) -> Option<Self> {
+        match character {
+            '(' => Some(Self::Parenthesis),
+            '[' => Some(Self::SquareBracket),
+            '{' => Some(Self::Brace),
+            _ => None,
+        }
+    }
+
+    fn from_closing(character: char) -> Option<Self> {
+        match character {
+            ')' => Some(Self::Parenthesis),
+            ']' => Some(Self::SquareBracket),
+            '}' => Some(Self::Brace),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructureHeader {
+    slots: Vec<StructureSlot>,
+}
+
+impl StructureHeader {
+    pub const MAXIMUM_SLOTS: usize = 8;
+
+    pub fn slots(&self) -> &[StructureSlot] {
+        &self.slots
+    }
+
+    pub fn packed_word(&self) -> u64 {
+        let mut word = 0_u64;
+        for (index, slot) in self.slots.iter().enumerate().take(Self::MAXIMUM_SLOTS) {
+            word |= u64::from(slot.packed_byte()) << (index * 8);
+        }
+        word
+    }
+
+    pub fn from_packed_word(word: u64) -> Self {
+        let mut slots = Vec::new();
+        for index in 0..Self::MAXIMUM_SLOTS {
+            let byte = ((word >> (index * 8)) & 0xff) as u8;
+            if byte == 0 && index > 0 {
+                break;
+            }
+            slots.push(StructureSlot::from_packed_byte(byte));
+        }
+        Self { slots }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StructureSlot {
+    shape: StructureShape,
+    child_count: u8,
+}
+
+impl StructureSlot {
+    pub fn new(shape: StructureShape, child_count: usize) -> Self {
+        Self {
+            shape,
+            child_count: child_count.min(15) as u8,
+        }
+    }
+
+    pub fn shape(&self) -> StructureShape {
+        self.shape
+    }
+
+    pub fn child_count(&self) -> u8 {
+        self.child_count
+    }
+
+    pub fn packed_byte(&self) -> u8 {
+        (self.shape.code() << 4) | self.child_count
+    }
+
+    pub fn from_packed_byte(byte: u8) -> Self {
+        Self {
+            shape: StructureShape::from_code(byte >> 4),
+            child_count: byte & 0x0f,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StructureShape {
+    Document,
+    Atom,
+    Parenthesis,
+    SquareBracket,
+    Brace,
+    PipeText,
+    Unknown,
+}
+
+impl StructureShape {
+    fn code(self) -> u8 {
+        match self {
+            Self::Document => 0,
+            Self::Atom => 1,
+            Self::Parenthesis => 2,
+            Self::SquareBracket => 3,
+            Self::Brace => 4,
+            Self::PipeText => 5,
+            Self::Unknown => 15,
+        }
+    }
+
+    fn from_code(code: u8) -> Self {
+        match code {
+            0 => Self::Document,
+            1 => Self::Atom,
+            2 => Self::Parenthesis,
+            3 => Self::SquareBracket,
+            4 => Self::Brace,
+            5 => Self::PipeText,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct StructureHeaderBuilder {
+    slots: Vec<StructureSlot>,
+}
+
+impl StructureHeaderBuilder {
+    fn new() -> Self {
+        Self { slots: Vec::new() }
+    }
+
+    fn push_document(&mut self, document: &Document) {
+        self.push_slot(StructureSlot::new(
+            StructureShape::Document,
+            document.holds_root_objects(),
+        ));
+        for root_object in document.root_objects() {
+            self.push_block(root_object, 1);
+        }
+    }
+
+    fn push_block(&mut self, block: &Block, depth: usize) {
+        if self.slots.len() >= StructureHeader::MAXIMUM_SLOTS || depth > 2 {
+            return;
+        }
+        self.push_slot(block.structure_slot());
+        if depth == 2 {
+            return;
+        }
+        for child in block.root_objects() {
+            self.push_block(child, depth + 1);
+        }
+    }
+
+    fn push_slot(&mut self, slot: StructureSlot) {
+        if self.slots.len() < StructureHeader::MAXIMUM_SLOTS {
+            self.slots.push(slot);
+        }
+    }
+
+    fn finish(self) -> StructureHeader {
+        StructureHeader { slots: self.slots }
     }
 }
 
@@ -261,7 +463,9 @@ impl AtomClassification {
             Self::IntegerCandidate
         } else if text.parse::<f64>().is_ok() && text.contains('.') {
             Self::DecimalCandidate
-        } else if text.chars().all(is_symbol_character)
+        } else if text
+            .chars()
+            .all(|character| AtomCharacter::new(character).is_symbol())
             && text
                 .chars()
                 .next()
@@ -338,7 +542,7 @@ impl<'source> Parser<'source> {
             let Some(character) = self.peek() else {
                 return Ok(root_objects);
             };
-            if is_closing_delimiter(character) {
+            if Delimiter::from_closing(character).is_some() {
                 return Err(NotaError::UnexpectedClose {
                     found: character,
                     position: self.cursor.position(),
@@ -380,7 +584,7 @@ impl<'source> Parser<'source> {
                     root_objects,
                 });
             }
-            if is_closing_delimiter(character) {
+            if Delimiter::from_closing(character).is_some() {
                 return Err(NotaError::UnexpectedClose {
                     found: character,
                     position: self.cursor.position(),
@@ -416,8 +620,8 @@ impl<'source> Parser<'source> {
         while let Some(character) = self.peek() {
             if character.is_whitespace()
                 || character == ';'
-                || is_opening_delimiter(character)
-                || is_closing_delimiter(character)
+                || Delimiter::from_opening(character).is_some()
+                || Delimiter::from_closing(character).is_some()
             {
                 break;
             }
@@ -502,14 +706,17 @@ impl Cursor {
     }
 }
 
-fn is_opening_delimiter(character: char) -> bool {
-    matches!(character, '(' | '[' | '{')
+#[derive(Clone, Copy, Debug)]
+struct AtomCharacter {
+    character: char,
 }
 
-fn is_closing_delimiter(character: char) -> bool {
-    matches!(character, ')' | ']' | '}')
-}
+impl AtomCharacter {
+    fn new(character: char) -> Self {
+        Self { character }
+    }
 
-fn is_symbol_character(character: char) -> bool {
-    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | ':')
+    fn is_symbol(&self) -> bool {
+        self.character.is_ascii_alphanumeric() || matches!(self.character, '_' | '-' | ':')
+    }
 }

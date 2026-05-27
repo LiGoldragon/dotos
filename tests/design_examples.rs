@@ -10,7 +10,7 @@
 //! When a design report cites a test, the test in this file should
 //! be the canonical example.
 
-use nota_next::Document;
+use nota_next::{Document, StructureHeader, StructureShape};
 
 /// Illustrates: every Block carries a SourceSpan that maps back to
 /// the original text by byte offset AND line/column. The span
@@ -89,4 +89,43 @@ fn design_example_reader_exposes_candidates_not_schema_semantics() {
     // Demote returns the underlying text. The reader does NOT promote
     // the text into any schema-level type — that's the higher layer.
     assert_eq!(block.demote_to_string(), Some("Decision"));
+}
+
+/// Illustrates: the first parser pass already has enough information
+/// to emit a compact first-two-level structure header. Slot 0 is the
+/// document; the remaining slots are root blocks and their immediate
+/// children in authored order. The header is structural only — it
+/// records delimiter/atom shape and child counts, not schema meaning.
+#[test]
+fn design_example_structure_header_captures_first_two_levels() {
+    let source = r#"(Input ((Record Entry) Drop))
+(Output (Accepted))
+{ Entry [Text] }"#;
+    let document = Document::parse(source).expect("nota parses");
+    let header = document.structure_header();
+    let observed: Vec<(StructureShape, u8)> = header
+        .slots()
+        .iter()
+        .map(|slot| (slot.shape(), slot.child_count()))
+        .collect();
+
+    assert_eq!(
+        observed,
+        vec![
+            (StructureShape::Document, 3),
+            (StructureShape::Parenthesis, 2),
+            (StructureShape::Atom, 0),
+            (StructureShape::Parenthesis, 2),
+            (StructureShape::Parenthesis, 2),
+            (StructureShape::Atom, 0),
+            (StructureShape::Parenthesis, 1),
+            (StructureShape::Brace, 2),
+        ],
+    );
+
+    assert_eq!(
+        StructureHeader::from_packed_word(header.packed_word()),
+        header,
+        "the header is a stable 64-bit structural triage word",
+    );
 }
