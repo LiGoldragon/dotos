@@ -34,7 +34,7 @@ fn exposes_recursive_shape_predicates() {
 #[test]
 fn classifies_atoms_as_candidates_without_schema_semantics() {
     let document =
-        Document::parse("TypeName field-name camelName schema:module:Type @Vec Record* 42 7.5")
+        Document::parse("TypeName field-name camelName schema:module:Type Vec Record* 42 7.5")
             .expect("valid nota");
     let roots = document.root_objects();
 
@@ -42,13 +42,13 @@ fn classifies_atoms_as_candidates_without_schema_semantics() {
     assert!(roots[1].qualifies_as_kebab_case_symbol());
     assert!(roots[2].qualifies_as_camel_case_symbol());
     assert!(roots[3].qualifies_as_symbol());
-    assert!(!roots[4].qualifies_as_symbol());
+    assert!(roots[4].qualifies_as_symbol());
     assert_eq!(
         roots[4].atom().expect("atom").classification(),
-        AtomClassification::TextCandidate,
-        "@-prefixed macro heads are explicit markers, not symbol candidates"
+        AtomClassification::SymbolCandidate,
+        "macro names are plain symbols; schema context decides whether a symbol invokes a macro"
     );
-    assert_eq!(roots[4].demote_to_string(), Some("@Vec"));
+    assert_eq!(roots[4].demote_to_string(), Some("Vec"));
     assert!(
         roots[5].qualifies_as_pascal_case_symbol(),
         "*-suffixed variant sugar remains a PascalCase symbol candidate"
@@ -60,6 +60,40 @@ fn classifies_atoms_as_candidates_without_schema_semantics() {
     assert_eq!(
         roots[7].atom().expect("atom").classification(),
         AtomClassification::DecimalCandidate
+    );
+}
+
+#[test]
+fn pipe_parenthesis_and_pipe_brace_are_recursive_delimiters() {
+    let source = "(| Kind (Decision [Reason]) |) {| Entry [Topic (Vec [Tag])] |}";
+    let document = Document::parse(source).expect("valid nota");
+    let roots = document.root_objects();
+
+    assert_eq!(roots.len(), 2);
+    assert!(roots[0].is_pipe_parenthesis());
+    assert!(roots[1].is_pipe_brace());
+    assert_eq!(roots[0].holds_root_objects(), 2);
+    assert_eq!(roots[1].holds_root_objects(), 2);
+    assert!(
+        roots[0]
+            .root_object_at(1)
+            .is_some_and(|block| block.is_parenthesis()),
+        "pipe parenthesis is recursive, not raw pipe text"
+    );
+    assert!(
+        roots[1]
+            .root_object_at(1)
+            .and_then(|block| block.root_object_at(1))
+            .is_some_and(|block| block.is_parenthesis()),
+        "pipe brace keeps nested macro-like objects visible to schema"
+    );
+    assert_eq!(
+        roots[0].reemit(document.source()),
+        "(| Kind (Decision [Reason]) |)"
+    );
+    assert_eq!(
+        roots[1].reemit(document.source()),
+        "{| Entry [Topic (Vec [Tag])] |}"
     );
 }
 
