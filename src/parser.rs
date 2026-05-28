@@ -486,10 +486,9 @@ impl AtomClassification {
         } else if text
             .chars()
             .all(|character| AtomCharacter::new(character).is_symbol())
-            && text
-                .chars()
-                .next()
-                .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+            && text.chars().next().is_some_and(|character| {
+                character.is_ascii_alphabetic() || character == '_' || character == '@'
+            })
         {
             Self::SymbolCandidate
         } else {
@@ -737,6 +736,7 @@ impl AtomCharacter {
     }
 
     fn is_symbol(&self) -> bool {
-        self.character.is_ascii_alphanumeric() || matches!(self.character, '_' | '-' | ':')
+        self.character.is_ascii_alphanumeric()
+            || matches!(self.character, '_' | '-' | ':' | '@' | '*')
     }
 }
