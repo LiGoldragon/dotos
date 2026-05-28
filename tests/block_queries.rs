@@ -42,10 +42,13 @@ fn classifies_atoms_as_candidates_without_schema_semantics() {
     assert!(roots[1].qualifies_as_kebab_case_symbol());
     assert!(roots[2].qualifies_as_camel_case_symbol());
     assert!(roots[3].qualifies_as_symbol());
-    assert!(
-        roots[4].qualifies_as_symbol(),
-        "@-prefixed macro heads are schema-level symbol candidates"
+    assert!(!roots[4].qualifies_as_symbol());
+    assert_eq!(
+        roots[4].atom().expect("atom").classification(),
+        AtomClassification::TextCandidate,
+        "@-prefixed macro heads are explicit markers, not symbol candidates"
     );
+    assert_eq!(roots[4].demote_to_string(), Some("@Vec"));
     assert!(
         roots[5].qualifies_as_pascal_case_symbol(),
         "*-suffixed variant sugar remains a PascalCase symbol candidate"
