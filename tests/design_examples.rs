@@ -99,8 +99,7 @@ fn design_example_reader_exposes_candidates_not_schema_semantics() {
 #[test]
 fn design_example_structure_header_captures_first_two_levels() {
     let source = r#"(Input ((Record Entry) Drop))
-(Output (Accepted))
-{ Entry [Text] }"#;
+(Output (Accepted))"#;
     let document = Document::parse(source).expect("nota parses");
     let header = document.structure_header();
     let observed: Vec<(StructureShape, u8)> = header
@@ -112,14 +111,13 @@ fn design_example_structure_header_captures_first_two_levels() {
     assert_eq!(
         observed,
         vec![
-            (StructureShape::Document, 3),
+            (StructureShape::Document, 2),
             (StructureShape::Parenthesis, 2),
             (StructureShape::Atom, 0),
             (StructureShape::Parenthesis, 2),
             (StructureShape::Parenthesis, 2),
             (StructureShape::Atom, 0),
             (StructureShape::Parenthesis, 1),
-            (StructureShape::Brace, 2),
         ],
     );
 
@@ -127,5 +125,48 @@ fn design_example_structure_header_captures_first_two_levels() {
         StructureHeader::from_packed_word(header.packed_word()),
         header,
         "the header is a stable 64-bit structural triage word",
+    );
+}
+
+/// Illustrates: the packed 64-bit structure header is a triage word,
+/// not a lossless replacement for the document tree. When one slot's
+/// child count cannot fit in the 4-bit count field, the slot is marked
+/// `Unknown` rather than pretending the exact shape survived.
+#[test]
+fn design_example_structure_header_marks_child_count_overflow() {
+    let source = "(A B C D E F G H I J K L M N O P)";
+    let document = Document::parse(source).expect("nota parses");
+    let header = document.structure_header();
+
+    let overflowed_slot = header.slots().get(1).expect("root object slot");
+    assert_eq!(overflowed_slot.shape(), StructureShape::Unknown);
+    assert_eq!(
+        overflowed_slot.child_count(),
+        15,
+        "the count nibble is saturated only when the shape is marked unknown",
+    );
+    assert_eq!(
+        StructureHeader::from_packed_word(header.packed_word()),
+        header
+    );
+}
+
+/// Illustrates: when the first-two-level structure contains more than
+/// the eight slots available in the packed word, the final slot becomes
+/// an overflow sentinel. Consumers can distinguish "complete eight-slot
+/// header" from "prefix of a larger structure".
+#[test]
+fn design_example_structure_header_marks_slot_truncation() {
+    let source = "A B C D E F G H I";
+    let document = Document::parse(source).expect("nota parses");
+    let header = document.structure_header();
+
+    assert_eq!(header.slots().len(), StructureHeader::MAXIMUM_SLOTS);
+    let last_slot = header.slots().last().expect("last packed slot");
+    assert_eq!(last_slot.shape(), StructureShape::Unknown);
+    assert_eq!(last_slot.child_count(), 15);
+    assert_eq!(
+        StructureHeader::from_packed_word(header.packed_word()),
+        header
     );
 }

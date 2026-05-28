@@ -287,9 +287,21 @@ pub struct StructureSlot {
 
 impl StructureSlot {
     pub fn new(shape: StructureShape, child_count: usize) -> Self {
+        if child_count > Self::MAXIMUM_CHILD_COUNT {
+            return Self::overflow();
+        }
         Self {
             shape,
-            child_count: child_count.min(15) as u8,
+            child_count: child_count as u8,
+        }
+    }
+
+    const MAXIMUM_CHILD_COUNT: usize = 15;
+
+    pub fn overflow() -> Self {
+        Self {
+            shape: StructureShape::Unknown,
+            child_count: Self::MAXIMUM_CHILD_COUNT as u8,
         }
     }
 
@@ -371,10 +383,12 @@ impl StructureHeaderBuilder {
     }
 
     fn push_block(&mut self, block: &Block, depth: usize) {
-        if self.slots.len() >= StructureHeader::MAXIMUM_SLOTS || depth > 2 {
+        if depth > 2 {
             return;
         }
-        self.push_slot(block.structure_slot());
+        if !self.push_slot(block.structure_slot()) {
+            return;
+        }
         if depth == 2 {
             return;
         }
@@ -383,9 +397,15 @@ impl StructureHeaderBuilder {
         }
     }
 
-    fn push_slot(&mut self, slot: StructureSlot) {
+    fn push_slot(&mut self, slot: StructureSlot) -> bool {
         if self.slots.len() < StructureHeader::MAXIMUM_SLOTS {
             self.slots.push(slot);
+            true
+        } else {
+            if let Some(last) = self.slots.last_mut() {
+                *last = StructureSlot::overflow();
+            }
+            false
         }
     }
 
