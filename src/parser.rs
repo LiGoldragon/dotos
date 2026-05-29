@@ -646,7 +646,7 @@ impl<'source> Parser<'source> {
         let Some(next) = self.peek_next() else {
             return Ok(atom);
         };
-        if !matches!(next, '(' | '{') {
+        if !matches!(next, '(' | '[' | '{') {
             return Ok(atom);
         }
         if text
@@ -668,10 +668,12 @@ impl<'source> Parser<'source> {
     ) -> Result<Block, NotaError> {
         let delimiter = match opening {
             '(' => Delimiter::PipeParenthesis,
+            '[' => Delimiter::PipeParenthesis,
             '{' => Delimiter::PipeBrace,
             _ => unreachable!("caller checked at-binding delimiter"),
         };
-        self.parse_at_delimited(start, delimiter, vec![name])
+        let (delimiter, closing) = delimiter.with_source_closing(opening);
+        self.parse_at_delimited(start, delimiter, closing, vec![name])
     }
 
     fn parse_named_member_binding(
@@ -682,6 +684,7 @@ impl<'source> Parser<'source> {
     ) -> Result<Block, NotaError> {
         let reference_delimiter = match opening {
             '(' => Delimiter::Parenthesis,
+            '[' => Delimiter::SquareBracket,
             '{' => Delimiter::Brace,
             _ => unreachable!("caller checked at-binding delimiter"),
         };
@@ -699,6 +702,7 @@ impl<'source> Parser<'source> {
         &mut self,
         start: SourcePosition,
         delimiter: Delimiter,
+        closing: char,
         mut root_objects: Vec<Block>,
     ) -> Result<Block, NotaError> {
         self.bump();
@@ -711,7 +715,7 @@ impl<'source> Parser<'source> {
                     position: start,
                 });
             };
-            if character == delimiter.closing() {
+            if character == closing {
                 self.bump();
                 let end = self.cursor.position();
                 return Ok(Block::Delimited {
@@ -835,7 +839,7 @@ impl<'source> Parser<'source> {
                     && character == '@'
                     && self
                         .peek_next()
-                        .is_some_and(|next| matches!(next, '(' | '{')))
+                        .is_some_and(|next| matches!(next, '(' | '[' | '{')))
             {
                 break;
             }
@@ -897,6 +901,24 @@ impl<'source> Parser<'source> {
             self.cursor.column += 1;
         }
         Some(character)
+    }
+}
+
+trait AtBindingOpening {
+    fn with_source_closing(self, opening: char) -> (Self, char)
+    where
+        Self: Sized;
+}
+
+impl AtBindingOpening for Delimiter {
+    fn with_source_closing(self, opening: char) -> (Self, char) {
+        let closing = match opening {
+            '(' => ')',
+            '[' => ']',
+            '{' => '}',
+            _ => unreachable!("caller checked at-binding delimiter"),
+        };
+        (self, closing)
     }
 }
 

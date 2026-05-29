@@ -28,13 +28,15 @@ tagged/data-carrying macro variant.*
 
 *Schema declarations use a sigil-based open-delimiter interface at the
 NOTA/syntax boundary: `Name@{...}` parses as a named struct-like declaration,
-`Name@(...)` parses as a named enum-like declaration, and `name@(Reference
+`Name@[...]` parses as a named enum-like declaration, and `name@(Reference
 ...)` parses as a member binding whose referenced value remains structural.
-The `@` is a declaration/binding sigil between a name and a delimiter, not a
-macro-call sigil. The root schema object remains implicit from the filename
-and does not need `@` or delimiters. The earlier recursive pipe delimiter
-support remains as a compatibility surface for existing fixtures and lower
-layers, but it is no longer the authored schema target.*
+Parentheses remain the composite/type-reference and macro-call argument shape
+for schema (`(Vec Entry)`, `(Optional Kind)`, `(Map (Key Value))`). The `@` is
+a declaration/binding sigil between a name and a delimiter, not a macro-call
+sigil. The root schema object remains implicit from the filename and does not
+need `@` or delimiters. The earlier recursive pipe delimiter support and
+`Name@(...)` enum declaration form remain compatibility surfaces for existing
+fixtures and lower layers, but they are no longer the authored schema target.*
 
 *NOTA owns Rust value codec shapes through shared `NotaDecode` and
 `NotaEncode` traits. The codec can read and write strings, integers, booleans,

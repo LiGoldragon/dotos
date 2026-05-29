@@ -129,12 +129,12 @@ fn design_example_pipe_delimiters_are_recursive_blocks() {
 
 /// Illustrates: the schema declaration target is name-first at-binding.
 /// The raw NOTA parser keeps it structural by lowering `Name@{...}` and
-/// `Name@(...)` to the same recursive declaration blocks the transitional
+/// `Name@[...]` to the same recursive declaration blocks the transitional
 /// pipe syntax used, while `field@(Vec Entry)` becomes a normal
 /// two-object field pair. Schema decides what those objects mean.
 #[test]
 fn design_example_at_binding_exposes_schema_declarations_as_blocks() {
-    let source = "Entry@{ topics@Topics records@(Vec Entry) } Kind@(Decision Correction)";
+    let source = "Entry@{ topics@Topics records@(Vec Entry) } Kind@[Decision Correction]";
     let document = Document::parse(source).expect("nota parses");
     let struct_declaration = document.root_object_at(0).expect("struct declaration");
     let enum_declaration = document.root_object_at(1).expect("enum declaration");
