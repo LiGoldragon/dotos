@@ -99,6 +99,31 @@ fn pipe_parenthesis_and_pipe_brace_are_recursive_delimiters() {
 }
 
 #[test]
+fn pipe_brace_can_nest_pipe_brace_declarations() {
+    let source = "{| Entry receipt {| Receipt recordIdentifier RecordIdentifier |} later Receipt |}";
+    let document = Document::parse(source).expect("valid nota");
+    let root = document.root_object_at(0).expect("root");
+
+    assert!(root.is_pipe_brace());
+    assert!(
+        root.root_object_at(2)
+            .is_some_and(|block| block.is_pipe_brace())
+    );
+    assert_eq!(root.reemit(document.source()), source);
+
+    let compact_source =
+        "{|Entry receipt {|Receipt recordIdentifier RecordIdentifier|} later Receipt|}";
+    let compact_document = Document::parse(compact_source).expect("compact valid nota");
+    let compact_root = compact_document.root_object_at(0).expect("compact root");
+    assert!(compact_root.is_pipe_brace());
+    assert!(
+        compact_root
+            .root_object_at(2)
+            .is_some_and(|block| block.is_pipe_brace())
+    );
+}
+
+#[test]
 fn pipe_text_is_square_bracket_safe_and_not_recursively_parsed() {
     let source = "[|macro body with ] and \" and apostrophe's text|]";
     let document = Document::parse(source).expect("valid nota");

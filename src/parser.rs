@@ -721,6 +721,7 @@ impl<'source> Parser<'source> {
                 || character == ';'
                 || Delimiter::from_opening(character).is_some()
                 || Delimiter::from_closing(character).is_some()
+                || self.at_pipe_delimiter_close()
             {
                 break;
             }
@@ -734,6 +735,13 @@ impl<'source> Parser<'source> {
             classification,
             span: SourceSpan { start, end },
         })
+    }
+
+    fn at_pipe_delimiter_close(&self) -> bool {
+        self.peek() == Some('|')
+            && self
+                .peek_next()
+                .is_some_and(|character| Delimiter::from_closing(character).is_some())
     }
 
     fn skip_spacing(&mut self) {
