@@ -12,6 +12,7 @@ mod parser;
 pub use codec::{
     NotaBlock, NotaCollection, NotaDecode, NotaDecodeError, NotaEncode, NotaSource, NotaString,
 };
+pub use nota_next_derive::{NotaDecode, NotaEncode};
 pub use parser::{
     Atom, AtomClassification, Block, Delimiter, Document, NotaError, PipeText, SourcePosition,
     SourceSpan, StructureHeader, StructureShape, StructureSlot,

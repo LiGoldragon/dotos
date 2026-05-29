@@ -15,6 +15,9 @@
 - Structural candidate methods use `qualifies_as_*`.
 - `NotaDecode` and `NotaEncode` are the shared NOTA value-codec traits used by
   hand-written Rust and by schema-emitted Rust.
+- `nota-next-derive` is the proc-macro companion crate re-exported by
+  `nota-next`. It derives `NotaDecode` and `NotaEncode` for named structs,
+  one-field tuple newtypes, unit enum variants, and one-payload enum variants.
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, string formatting, and collection value shapes.

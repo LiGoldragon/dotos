@@ -31,5 +31,9 @@ tagged/data-carrying macro variant.*
 vectors, ordered maps, and options as NOTA values. Schema owns the type-name
 vocabulary and declaration semantics layered above those value shapes.*
 
+*The shared NOTA codec includes derive macros for generated and hand-written
+Rust nouns. Schema-generated Rust should derive `NotaDecode` and `NotaEncode`
+instead of hand-emitting per-type codec implementations.*
+
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.
