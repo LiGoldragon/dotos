@@ -1,13 +1,17 @@
-//! Structural NOTA reader.
+//! Structural NOTA reader and codec.
 //!
 //! This crate is the hand-authored recursion floor for the schema-derived
 //! stack. It recognizes NOTA delimiters, spans, atoms, and block structure
-//! before any schema can be loaded. It deliberately does not interpret those
-//! structures as schema types, fields, imports, or macros; higher layers own
-//! that semantic lowering.
+//! before any schema can be loaded. Its codec owns NOTA value shapes for Rust
+//! values, while higher layers own schema type vocabulary, fields, imports,
+//! declarations, and macros.
 
+mod codec;
 mod parser;
 
+pub use codec::{
+    NotaBlock, NotaCollection, NotaDecode, NotaDecodeError, NotaEncode, NotaSource, NotaString,
+};
 pub use parser::{
     Atom, AtomClassification, Block, Delimiter, Document, NotaError, PipeText, SourcePosition,
     SourceSpan, StructureHeader, StructureShape, StructureSlot,

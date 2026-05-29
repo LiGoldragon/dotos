@@ -26,5 +26,10 @@ and struct-like declarations.*
 symbol candidate until a schema context reads a known schema-node position as a
 tagged/data-carrying macro variant.*
 
+*NOTA owns Rust value codec shapes through shared `NotaDecode` and
+`NotaEncode` traits. The codec can read and write strings, integers, booleans,
+vectors, ordered maps, and options as NOTA values. Schema owns the type-name
+vocabulary and declaration semantics layered above those value shapes.*
+
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.

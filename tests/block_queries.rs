@@ -100,7 +100,8 @@ fn pipe_parenthesis_and_pipe_brace_are_recursive_delimiters() {
 
 #[test]
 fn pipe_brace_can_nest_pipe_brace_declarations() {
-    let source = "{| Entry receipt {| Receipt recordIdentifier RecordIdentifier |} later Receipt |}";
+    let source =
+        "{| Entry receipt {| Receipt recordIdentifier RecordIdentifier |} later Receipt |}";
     let document = Document::parse(source).expect("valid nota");
     let root = document.root_object_at(0).expect("root");
 
