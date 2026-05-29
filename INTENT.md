@@ -26,6 +26,14 @@ and struct-like declarations.*
 symbol candidate until a schema context reads a known schema-node position as a
 tagged/data-carrying macro variant.*
 
+*Schema declarations are moving to a sigil-based open-delimiter interface at
+the NOTA/syntax boundary: `Name@{...}` declares a named struct-like shape and
+`Name@(...)` declares a named enum-like shape. The `@` is a declaration/binding
+sigil between a name and a delimiter, not a macro-call sigil. The root schema
+object remains implicit from the filename and does not need `@` or delimiters.
+Current code still carries the earlier recursive pipe delimiter support as a
+transitional implementation surface.*
+
 *NOTA owns Rust value codec shapes through shared `NotaDecode` and
 `NotaEncode` traits. The codec can read and write strings, integers, booleans,
 vectors, ordered maps, and options as NOTA values. Schema owns the type-name

@@ -22,6 +22,21 @@
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, string formatting, and collection value shapes.
 
+## Syntax Frontier
+
+The parser currently understands the recursive pipe delimiter forms needed by
+the transitional schema implementation. The next declaration surface is
+name-first sigil binding at an open delimiter:
+
+- `Name@{ ... }` for a named struct-like declaration.
+- `Name@( ... )` for a named enum-like declaration.
+- `name@Type` for a named member binding to a referenced type.
+
+This is syntax-layer structure only. The `@` marker is not a macro-call sigil;
+macro calls remain values read against an expected schema-node type. The root
+object of a `.schema` file is still implicit from the filename, so the root
+does not carry a `Name@{...}` wrapper.
+
 ## Boundary
 
 This crate does not know what a schema type, field, declaration, enum, macro,
