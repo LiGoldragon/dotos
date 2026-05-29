@@ -10,7 +10,7 @@
 //! When a design report cites a test, the test in this file should
 //! be the canonical example.
 
-use nota_next::{Document, StructureHeader, StructureShape};
+use nota_next::{Block, Document, StructureHeader, StructureShape};
 
 /// Illustrates: every Block carries a SourceSpan that maps back to
 /// the original text by byte offset AND line/column. The span
@@ -124,6 +124,56 @@ fn design_example_pipe_delimiters_are_recursive_blocks() {
             .root_object_at(1)
             .is_some_and(|block| block.is_square_bracket()),
         "the struct payload remains parsed as structure"
+    );
+}
+
+/// Illustrates: the schema declaration target is name-first at-binding.
+/// The raw NOTA parser keeps it structural by lowering `Name@{...}` and
+/// `Name@(...)` to the same recursive declaration blocks the transitional
+/// pipe syntax used, while `field@(Vec Entry)` becomes a normal
+/// two-object field pair. Schema decides what those objects mean.
+#[test]
+fn design_example_at_binding_exposes_schema_declarations_as_blocks() {
+    let source = "Entry@{ topics@Topics records@(Vec Entry) } Kind@(Decision Correction)";
+    let document = Document::parse(source).expect("nota parses");
+    let struct_declaration = document.root_object_at(0).expect("struct declaration");
+    let enum_declaration = document.root_object_at(1).expect("enum declaration");
+
+    assert!(struct_declaration.is_pipe_brace());
+    assert_eq!(
+        struct_declaration
+            .root_object_at(0)
+            .and_then(Block::demote_to_string),
+        Some("Entry")
+    );
+    assert_eq!(
+        struct_declaration
+            .root_object_at(1)
+            .and_then(Block::demote_to_string),
+        Some("topics@Topics"),
+        "simple member bindings remain atom data for the schema layer"
+    );
+    let records = struct_declaration
+        .root_object_at(2)
+        .expect("records composite field");
+    assert!(records.is_parenthesis());
+    assert_eq!(
+        records.root_object_at(0).and_then(Block::demote_to_string),
+        Some("records")
+    );
+    assert!(
+        records
+            .root_object_at(1)
+            .is_some_and(|reference| reference.is_parenthesis()),
+        "the composite reference remains a parenthesis object"
+    );
+
+    assert!(enum_declaration.is_pipe_parenthesis());
+    assert_eq!(
+        enum_declaration
+            .root_object_at(0)
+            .and_then(Block::demote_to_string),
+        Some("Kind")
     );
 }
 
