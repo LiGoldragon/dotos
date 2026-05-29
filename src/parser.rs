@@ -649,11 +649,7 @@ impl<'source> Parser<'source> {
         if !matches!(next, '(' | '[' | '{') {
             return Ok(atom);
         }
-        if text
-            .chars()
-            .next()
-            .is_some_and(|character| character.is_ascii_uppercase())
-        {
+        if opening_starts_declaration(&text, next) {
             self.parse_named_declaration_binding(start, atom, next)
         } else {
             self.parse_named_member_binding(start, atom, next)
@@ -667,7 +663,6 @@ impl<'source> Parser<'source> {
         opening: char,
     ) -> Result<Block, NotaError> {
         let delimiter = match opening {
-            '(' => Delimiter::PipeParenthesis,
             '[' => Delimiter::PipeParenthesis,
             '{' => Delimiter::PipeBrace,
             _ => unreachable!("caller checked at-binding delimiter"),
@@ -691,10 +686,21 @@ impl<'source> Parser<'source> {
         self.bump();
         let reference = self.parse_delimited(reference_delimiter)?;
         let end = reference.source_span().end;
+        let root_objects = if opening == '(' && reference.holds_single_root_object() {
+            vec![
+                name,
+                reference
+                    .root_object_at(0)
+                    .expect("single root object checked")
+                    .clone(),
+            ]
+        } else {
+            vec![name, reference]
+        };
         Ok(Block::Delimited {
             delimiter: Delimiter::Parenthesis,
             span: SourceSpan { start, end },
-            root_objects: vec![name, reference],
+            root_objects,
         })
     }
 
@@ -902,6 +908,17 @@ impl<'source> Parser<'source> {
         }
         Some(character)
     }
+}
+
+fn opening_starts_declaration(name: &str, opening: char) -> bool {
+    matches!(opening, '[' | '{')
+        && name
+            .split(':')
+            .next_back()
+            .unwrap_or(name)
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_uppercase())
 }
 
 trait AtBindingOpening {
