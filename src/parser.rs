@@ -373,6 +373,20 @@ pub enum StructureShape {
 }
 
 impl StructureShape {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Document => "document",
+            Self::Atom => "atom",
+            Self::Parenthesis => "parenthesis",
+            Self::SquareBracket => "square bracket",
+            Self::Brace => "brace",
+            Self::PipeText => "pipe text",
+            Self::PipeParenthesis => "pipe parenthesis",
+            Self::PipeBrace => "pipe brace",
+            Self::Unknown => "unknown",
+        }
+    }
+
     fn code(self) -> u8 {
         match self {
             Self::Document => 0,

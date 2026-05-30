@@ -23,6 +23,12 @@
   expectation, string formatting, and collection value shapes.
 - `Box<T>` is a storage wrapper only. Its codec delegates to `T` so recursive
   Rust data does not create a second NOTA shape.
+- `macros` is the reusable macro-node mechanism. `MacroNodeDefinition`
+  describes a structural pattern at a position, `MacroRegistry` dispatches a
+  candidate block sequence through ordered definitions, and `MacroMatch`
+  returns named captures to the consumer. The mechanism is semantic-neutral:
+  schema-next may register struct/enum/newtype patterns, but nota-next only
+  matches atoms, delimiters, literals, and rest captures.
 
 ## At-Binding Syntax
 
@@ -51,6 +57,11 @@ schema macro calls.
 This crate does not know what a schema type, field, declaration, enum, macro,
 or import means. It only exposes the raw structure and value serialization
 needed by the next layer.
+
+The macro-node layer preserves that boundary. A macro definition says "this
+shape matches here" and returns captures; it does not say whether the match is
+a schema struct, an intent record, a deployment stanza, or any other consumer
+object. Consumers attach vocabulary and lowering on top of the returned match.
 
 The schema layer may assign declaration meaning to pipe-parenthesis or
 pipe-brace, but `nota-next` only reports those delimiter shapes and their

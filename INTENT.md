@@ -52,5 +52,11 @@ encodes through the contained `T` without adding syntax, so recursive schema
 data such as assembled type references can use boxed Rust fields while staying
 the same NOTA data.*
 
+*Macro nodes are a reusable NOTA-layer mechanism. NOTA owns the structural
+pattern data, named capture extraction, registry dispatch, conflict detection,
+and rich no-match diagnostics. Consumers such as schema-next own the vocabulary
+they register and the semantic lowering they perform from the returned macro
+match.*
+
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.
