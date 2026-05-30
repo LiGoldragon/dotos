@@ -518,7 +518,7 @@ pub enum AtomClassification {
 }
 
 impl AtomClassification {
-    fn classify(text: &str) -> Self {
+    pub fn classify(text: &str) -> Self {
         if text.parse::<i64>().is_ok() {
             Self::IntegerCandidate
         } else if text.parse::<f64>().is_ok() && text.contains('.') {
