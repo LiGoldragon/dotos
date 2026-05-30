@@ -243,6 +243,7 @@ impl Pattern {
     deserialize_bounds(__D::Error: rkyv::rancor::Source)
 )]
 pub enum PatternElement {
+    Any(Option<CaptureName>),
     Atom(AtomShape),
     Delimited(DelimitedShape),
     Literal(String),
@@ -250,6 +251,10 @@ pub enum PatternElement {
 }
 
 impl PatternElement {
+    pub fn any(capture: impl Into<Option<CaptureName>>) -> Self {
+        Self::Any(capture.into())
+    }
+
     pub fn atom(shape: AtomShape) -> Self {
         Self::Atom(shape)
     }
@@ -272,6 +277,12 @@ impl PatternElement {
         captures: &mut MacroCaptures<'block>,
     ) -> Option<()> {
         match self {
+            Self::Any(capture_name) => {
+                if let Some(capture_name) = capture_name {
+                    captures.insert(capture_name.clone(), CapturedValue::Block(block));
+                }
+                Some(())
+            }
             Self::Atom(shape) => shape.match_block(block, captures),
             Self::Delimited(shape) => shape.match_block(block, captures),
             Self::Literal(value) => {
