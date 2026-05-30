@@ -457,3 +457,21 @@ where
         NotaCollection::format_option(self, Inner::to_nota)
     }
 }
+
+impl<Inner> NotaDecode for Box<Inner>
+where
+    Inner: NotaDecode,
+{
+    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
+        Inner::from_nota_block(block).map(Box::new)
+    }
+}
+
+impl<Inner> NotaEncode for Box<Inner>
+where
+    Inner: NotaEncode,
+{
+    fn to_nota(&self) -> String {
+        Inner::to_nota(self)
+    }
+}

@@ -21,6 +21,8 @@
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, string formatting, and collection value shapes.
+- `Box<T>` is a storage wrapper only. Its codec delegates to `T` so recursive
+  Rust data does not create a second NOTA shape.
 
 ## At-Binding Syntax
 

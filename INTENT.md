@@ -47,5 +47,10 @@ vocabulary and declaration semantics layered above those value shapes.*
 Rust nouns. Schema-generated Rust should derive `NotaDecode` and `NotaEncode`
 instead of hand-emitting per-type codec implementations.*
 
+*Rust storage indirection is not a NOTA value shape. `Box<T>` decodes and
+encodes through the contained `T` without adding syntax, so recursive schema
+data such as assembled type references can use boxed Rust fields while staying
+the same NOTA data.*
+
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.

@@ -135,7 +135,8 @@ fn design_example_pipe_delimiters_are_recursive_blocks() {
 /// Schema decides what those objects mean.
 #[test]
 fn design_example_at_binding_exposes_schema_declarations_as_blocks() {
-    let source = "Entry@{ topics@Topics topic@(Topic) records@(Vec Entry) } Kind@[Decision Correction]";
+    let source =
+        "Entry@{ topics@Topics topic@(Topic) records@(Vec Entry) } Kind@[Decision Correction]";
     let document = Document::parse(source).expect("nota parses");
     let struct_declaration = document.root_object_at(0).expect("struct declaration");
     let enum_declaration = document.root_object_at(1).expect("enum declaration");

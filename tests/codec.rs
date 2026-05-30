@@ -63,6 +63,16 @@ fn codec_decodes_and_encodes_ordered_map_values() {
 }
 
 #[test]
+fn codec_decodes_and_encodes_boxed_values_without_shape_noise() {
+    let boxed = NotaSource::new("[recursive reference]")
+        .parse::<Box<String>>()
+        .expect("boxed value decodes");
+
+    assert_eq!(*boxed, "recursive reference");
+    assert_eq!(boxed.to_nota(), "[recursive reference]");
+}
+
+#[test]
 fn codec_rejects_multi_root_source_for_typed_parse() {
     let error = NotaSource::new("alpha beta")
         .parse::<String>()
