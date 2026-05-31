@@ -9,6 +9,10 @@
   Delimited objects include standard parentheses, square brackets, braces, and
   the recursive pipe forms `(|...|)` and `{|...|}`. Pipe-square `[|...|]`
   remains text, not recursive structure.
+- `Delimiter` owns the textual delimiter table: opening text, closing text,
+  and wrapping child encodings. `Block` exposes delimiter-specific child
+  queries so consumers do not destructure raw enum variants to recover a child
+  slice.
 - `SourceSpan` preserves byte, line, and column positions for diagnostics and
   later macro passes.
 - Factual methods use `is_*`.
@@ -17,10 +21,11 @@
   hand-written Rust and by schema-emitted Rust.
 - `nota-next-derive` is the proc-macro companion crate re-exported by
   `nota-next`. It derives `NotaDecode` and `NotaEncode` for named structs,
-  one-field tuple newtypes, unit enum variants, and one-payload enum variants.
-  The same derives honor `#[nota(known_root)]` on named structs by emitting
-  `NotaDocumentDecode` and `NotaDocumentEncode` implementations over the
-  document body.
+  one-field tuple newtypes, unit enum variants, one-payload enum variants, and
+  enum variants with multiple unnamed fields encoded as `(Variant (field1
+  field2 ...))`. The same derives honor `#[nota(known_root)]` on named structs
+  by emitting `NotaDocumentDecode` and `NotaDocumentEncode` implementations
+  over the document body.
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, string formatting, and collection value shapes.
@@ -40,9 +45,9 @@
   returns named captures to the consumer. The mechanism is semantic-neutral:
   schema-next may register struct/enum/newtype patterns, but nota-next only
   matches atoms, delimiters, literals, and rest captures. A delimited pattern
-  can also carry a serializable child pattern over that block's immediate
-  children, giving consumers nested structural constraints without recursive
-  text-template logic.
+  can carry a recursive `Pattern` over that block's children, giving consumers
+  arbitrarily nested structural constraints without recursive text-template
+  logic.
 
 ## At-Binding Syntax
 

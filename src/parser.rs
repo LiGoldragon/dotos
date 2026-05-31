@@ -136,6 +136,21 @@ impl Block {
         matches!(self, Self::Atom(_))
     }
 
+    pub fn is_delimited_with(&self, delimiter: Delimiter) -> bool {
+        matches!(self, Self::Delimited { delimiter: found, .. } if *found == delimiter)
+    }
+
+    pub fn as_delimited(&self, delimiter: Delimiter) -> Option<&[Block]> {
+        match self {
+            Self::Delimited {
+                delimiter: found,
+                root_objects,
+                ..
+            } if *found == delimiter => Some(root_objects),
+            Self::Delimited { .. } | Self::PipeText(_) | Self::Atom(_) => None,
+        }
+    }
+
     pub fn holds_root_objects(&self) -> usize {
         match self {
             Self::Delimited { root_objects, .. } => root_objects.len(),
@@ -241,6 +256,46 @@ pub enum Delimiter {
 }
 
 impl Delimiter {
+    pub fn opening_text(self) -> &'static str {
+        match self {
+            Self::Parenthesis => "(",
+            Self::SquareBracket => "[",
+            Self::Brace => "{",
+            Self::PipeParenthesis => "(|",
+            Self::PipeBrace => "{|",
+        }
+    }
+
+    pub fn closing_text(self) -> &'static str {
+        match self {
+            Self::Parenthesis => ")",
+            Self::SquareBracket => "]",
+            Self::Brace => "}",
+            Self::PipeParenthesis => "|)",
+            Self::PipeBrace => "|}",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Parenthesis => "parenthesis",
+            Self::SquareBracket => "square bracket",
+            Self::Brace => "brace",
+            Self::PipeParenthesis => "pipe parenthesis",
+            Self::PipeBrace => "pipe brace",
+        }
+    }
+
+    pub fn wrap(self, children: impl IntoIterator<Item = String>) -> String {
+        let children = children.into_iter().collect::<Vec<_>>();
+        format!(
+            "{}{}{}",
+            self.opening_text(),
+            children.join(" "),
+            self.closing_text()
+        )
+    }
+
     fn closing(self) -> char {
         match self {
             Self::Parenthesis => ')',
@@ -248,16 +303,6 @@ impl Delimiter {
             Self::Brace => '}',
             Self::PipeParenthesis => ')',
             Self::PipeBrace => '}',
-        }
-    }
-
-    fn opening_text(self) -> &'static str {
-        match self {
-            Self::Parenthesis => "(",
-            Self::SquareBracket => "[",
-            Self::Brace => "{",
-            Self::PipeParenthesis => "(|",
-            Self::PipeBrace => "{|",
         }
     }
 

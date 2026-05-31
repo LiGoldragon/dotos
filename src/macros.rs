@@ -470,11 +470,23 @@ pub enum SigilPosition {
     Eq,
     PartialEq,
 )]
+#[rkyv(
+    bytecheck(bounds(
+        __C: rkyv::validation::ArchiveContext,
+        __C::Error: rkyv::rancor::Source
+    )),
+    serialize_bounds(
+        __S: rkyv::ser::Writer + rkyv::ser::Allocator,
+        __S::Error: rkyv::rancor::Source
+    ),
+    deserialize_bounds(__D::Error: rkyv::rancor::Source)
+)]
 pub struct DelimitedShape {
     delimiter: MacroDelimiter,
     object_count: MacroObjectCount,
     capture: Option<CaptureName>,
-    children: Option<ChildPattern>,
+    #[rkyv(omit_bounds)]
+    children: Option<Box<Pattern>>,
 }
 
 impl DelimitedShape {
@@ -495,8 +507,8 @@ impl DelimitedShape {
         Self::new(delimiter, MacroObjectCount::Any, capture.into())
     }
 
-    pub fn with_children(mut self, children: ChildPattern) -> Self {
-        self.children = Some(children);
+    pub fn with_children(mut self, children: Pattern) -> Self {
+        self.children = Some(Box::new(children));
         self
     }
 
@@ -514,175 +526,6 @@ impl DelimitedShape {
         if let Some(children) = &self.children {
             let child_blocks = block.root_objects().iter().collect::<Vec<_>>();
             captures.extend(children.matches(&child_blocks)?);
-        }
-        if let Some(capture_name) = &self.capture {
-            captures.insert(capture_name.clone(), CapturedValue::Block(block));
-        }
-        Some(())
-    }
-}
-
-#[derive(
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-    nota_next::NotaDecode,
-    nota_next::NotaEncode,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-)]
-pub struct ChildPattern {
-    elements: Vec<ChildPatternElement>,
-}
-
-impl ChildPattern {
-    pub fn new(elements: Vec<ChildPatternElement>) -> Self {
-        Self { elements }
-    }
-
-    pub fn elements(&self) -> &[ChildPatternElement] {
-        &self.elements
-    }
-
-    fn matches<'block>(&self, blocks: &[&'block Block]) -> Option<MacroCaptures<'block>> {
-        let mut captures = MacroCaptures::new();
-        let mut index = 0;
-        for element in &self.elements {
-            match element {
-                ChildPatternElement::Rest(capture_name) => {
-                    captures.insert(
-                        capture_name.clone(),
-                        CapturedValue::Blocks(blocks[index..].to_vec()),
-                    );
-                    return Some(captures);
-                }
-                _ => {
-                    let block = blocks.get(index)?;
-                    element.match_block(block, &mut captures)?;
-                    index += 1;
-                }
-            }
-        }
-        if index == blocks.len() {
-            Some(captures)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-    nota_next::NotaDecode,
-    nota_next::NotaEncode,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-)]
-pub enum ChildPatternElement {
-    Any(Option<CaptureName>),
-    Atom(AtomShape),
-    Delimited(ChildDelimitedShape),
-    Literal(String),
-    Rest(CaptureName),
-}
-
-impl ChildPatternElement {
-    pub fn any(capture: impl Into<Option<CaptureName>>) -> Self {
-        Self::Any(capture.into())
-    }
-
-    pub fn atom(shape: AtomShape) -> Self {
-        Self::Atom(shape)
-    }
-
-    pub fn delimited(shape: ChildDelimitedShape) -> Self {
-        Self::Delimited(shape)
-    }
-
-    pub fn literal(value: impl Into<String>) -> Self {
-        Self::Literal(value.into())
-    }
-
-    pub fn rest(capture_name: CaptureName) -> Self {
-        Self::Rest(capture_name)
-    }
-
-    fn match_block<'block>(
-        &self,
-        block: &'block Block,
-        captures: &mut MacroCaptures<'block>,
-    ) -> Option<()> {
-        match self {
-            Self::Any(capture_name) => {
-                if let Some(capture_name) = capture_name {
-                    captures.insert(capture_name.clone(), CapturedValue::Block(block));
-                }
-                Some(())
-            }
-            Self::Atom(shape) => shape.match_block(block, captures),
-            Self::Delimited(shape) => shape.match_block(block, captures),
-            Self::Literal(value) => {
-                if block.demote_to_string() == Some(value.as_str()) {
-                    Some(())
-                } else {
-                    None
-                }
-            }
-            Self::Rest(_) => None,
-        }
-    }
-}
-
-#[derive(
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-    nota_next::NotaDecode,
-    nota_next::NotaEncode,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-)]
-pub struct ChildDelimitedShape {
-    delimiter: MacroDelimiter,
-    object_count: MacroObjectCount,
-    capture: Option<CaptureName>,
-}
-
-impl ChildDelimitedShape {
-    pub fn new(
-        delimiter: MacroDelimiter,
-        object_count: MacroObjectCount,
-        capture: Option<CaptureName>,
-    ) -> Self {
-        Self {
-            delimiter,
-            object_count,
-            capture,
-        }
-    }
-
-    pub fn any(delimiter: MacroDelimiter, capture: impl Into<Option<CaptureName>>) -> Self {
-        Self::new(delimiter, MacroObjectCount::Any, capture.into())
-    }
-
-    fn match_block<'block>(
-        &self,
-        block: &'block Block,
-        captures: &mut MacroCaptures<'block>,
-    ) -> Option<()> {
-        if MacroDelimiter::from_block(block) != Some(self.delimiter) {
-            return None;
-        }
-        if !self.object_count.matches(block.holds_root_objects()) {
-            return None;
         }
         if let Some(capture_name) = &self.capture {
             captures.insert(capture_name.clone(), CapturedValue::Block(block));

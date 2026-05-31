@@ -1,7 +1,7 @@
 use nota_next::{
-    AtomShape, CaptureName, ChildPattern, ChildPatternElement, DelimitedShape, Document,
-    MacroCandidate, MacroDelimiter, MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern,
-    PatternElement, PositionPredicate,
+    AtomShape, CaptureName, DelimitedShape, Document, MacroCandidate, MacroDelimiter,
+    MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern, PatternElement,
+    PositionPredicate,
 };
 
 #[test]
@@ -61,9 +61,9 @@ fn dispatches_nested_structural_constraints_inside_delimited_values() {
                     MacroObjectCount::Exact(2),
                     Some(CaptureName::new("body")),
                 )
-                .with_children(ChildPattern::new(vec![
-                    ChildPatternElement::literal("topic"),
-                    ChildPatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
+                .with_children(Pattern::new(vec![
+                    PatternElement::literal("topic"),
+                    PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
                         "field_type",
                     )))),
                 ])),
@@ -104,9 +104,9 @@ fn rejects_delimited_values_when_nested_constraints_do_not_match() {
             PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new("type_name")))),
             PatternElement::delimited(
                 DelimitedShape::new(MacroDelimiter::Brace, MacroObjectCount::Exact(2), None)
-                    .with_children(ChildPattern::new(vec![
-                        ChildPatternElement::literal("topic"),
-                        ChildPatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
+                    .with_children(Pattern::new(vec![
+                        PatternElement::literal("topic"),
+                        PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
                             "field_type",
                         )))),
                     ])),
@@ -125,6 +125,70 @@ fn rejects_delimited_values_when_nested_constraints_do_not_match() {
         .expect_err("bracket child is not a Pascal type atom");
 
     assert!(error.to_string().contains("SingleTopicStruct"));
+}
+
+#[test]
+fn dispatches_recursively_nested_structural_constraints() {
+    let document = Document::parse("{Entry {topic (Vec [Topic])}}").expect("fixture parses");
+    let namespace = document.root_object_at(0).expect("fixture has root");
+    let key = namespace.root_object_at(0).expect("entry key");
+    let value = namespace.root_object_at(1).expect("entry value");
+    let registry = MacroRegistry::new(vec![MacroNodeDefinition::new(
+        "VectorTopicStruct",
+        PositionPredicate::named("NamespaceDeclaration"),
+        Pattern::new(vec![
+            PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new("type_name")))),
+            PatternElement::delimited(
+                DelimitedShape::new(MacroDelimiter::Brace, MacroObjectCount::Exact(2), None)
+                    .with_children(Pattern::new(vec![
+                        PatternElement::literal("topic"),
+                        PatternElement::delimited(
+                            DelimitedShape::new(
+                                MacroDelimiter::Parenthesis,
+                                MacroObjectCount::Exact(2),
+                                Some(CaptureName::new("reference")),
+                            )
+                            .with_children(Pattern::new(vec![
+                                PatternElement::literal("Vec"),
+                                PatternElement::delimited(
+                                    DelimitedShape::new(
+                                        MacroDelimiter::SquareBracket,
+                                        MacroObjectCount::Exact(1),
+                                        None,
+                                    )
+                                    .with_children(
+                                        Pattern::new(vec![PatternElement::atom(
+                                            AtomShape::pascal_case(Some(CaptureName::new(
+                                                "element_type",
+                                            ))),
+                                        )]),
+                                    ),
+                                ),
+                            ])),
+                        ),
+                    ])),
+            ),
+        ]),
+        "Pascal type key followed by a deeply constrained vector topic field",
+    )])
+    .expect("registry has no conflicts");
+
+    let matched = registry
+        .dispatch(&MacroCandidate::from_pair(
+            PositionPredicate::named("NamespaceDeclaration"),
+            key,
+            value,
+        ))
+        .expect("entry matches recursive child constraints");
+
+    assert_eq!(matched.macro_name(), "VectorTopicStruct");
+    assert!(
+        matched
+            .captures()
+            .get(&CaptureName::new("element_type"))
+            .is_some(),
+        "recursive structural pattern captures through more than one nested delimiter"
+    );
 }
 
 #[test]

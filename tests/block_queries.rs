@@ -1,4 +1,4 @@
-use nota_next::{AtomClassification, Document, NotaError};
+use nota_next::{AtomClassification, Delimiter, Document, NotaError};
 
 #[test]
 fn parses_ordered_root_objects_and_reemits_from_spans() {
@@ -29,6 +29,27 @@ fn exposes_recursive_shape_predicates() {
         root.root_object_at(1)
             .is_some_and(|block| block.is_square_bracket())
     );
+}
+
+#[test]
+fn exposes_delimiter_text_and_child_helpers() {
+    let document = Document::parse("[alpha beta]").expect("valid nota");
+    let root = document.root_object_at(0).expect("root");
+
+    assert_eq!(Delimiter::SquareBracket.opening_text(), "[");
+    assert_eq!(Delimiter::SquareBracket.closing_text(), "]");
+    assert_eq!(
+        Delimiter::PipeParenthesis.wrap(["Kind".to_owned(), "(Decision)".to_owned()]),
+        "(|Kind (Decision)|)"
+    );
+    assert!(root.is_delimited_with(Delimiter::SquareBracket));
+    assert_eq!(
+        root.as_delimited(Delimiter::SquareBracket)
+            .expect("square children")
+            .len(),
+        2
+    );
+    assert!(root.as_delimited(Delimiter::Brace).is_none());
 }
 
 #[test]

@@ -200,51 +200,48 @@ impl<'block> NotaBlock<'block> {
     pub fn expect_children(
         &self,
         delimiter: Delimiter,
-        delimiter_name: &'static str,
         type_name: &'static str,
         expected: usize,
     ) -> Result<&'block [Block], NotaDecodeError> {
-        match self.block {
-            Block::Delimited {
-                delimiter: found,
-                root_objects,
-                ..
-            } if *found == delimiter => {
-                if root_objects.len() != expected {
-                    return Err(NotaDecodeError::ExpectedRootCount {
-                        type_name,
-                        expected,
-                        found: root_objects.len(),
-                    });
-                }
-                Ok(root_objects)
-            }
-            _ => Err(NotaDecodeError::ExpectedDelimited {
+        let root_objects = self.expect_delimited(delimiter, type_name)?;
+        if root_objects.len() != expected {
+            return Err(NotaDecodeError::ExpectedRootCount {
                 type_name,
-                delimiter: delimiter_name,
-            }),
+                expected,
+                found: root_objects.len(),
+            });
         }
+        Ok(root_objects)
+    }
+
+    pub fn expect_delimited(
+        &self,
+        delimiter: Delimiter,
+        type_name: &'static str,
+    ) -> Result<&'block [Block], NotaDecodeError> {
+        self.block
+            .as_delimited(delimiter)
+            .ok_or(NotaDecodeError::ExpectedDelimited {
+                type_name,
+                delimiter: delimiter.description(),
+            })
     }
 
     pub fn parse_string(&self) -> Result<String, NotaDecodeError> {
         if let Some(text) = self.block.demote_to_string() {
             return Ok(text.to_owned());
         }
-        match self.block {
-            Block::Delimited {
-                delimiter: Delimiter::SquareBracket,
-                root_objects,
-                ..
-            } => root_objects
+        if let Some(root_objects) = self.block.as_delimited(Delimiter::SquareBracket) {
+            return root_objects
                 .iter()
                 .map(|block| NotaBlock::new(block).parse_string())
                 .collect::<Result<Vec<_>, _>>()
-                .map(|parts| parts.join(" ")),
-            _ => Err(NotaDecodeError::ExpectedDelimited {
-                type_name: "String",
-                delimiter: "string atom or square bracket",
-            }),
+                .map(|parts| parts.join(" "));
         }
+        Err(NotaDecodeError::ExpectedDelimited {
+            type_name: "String",
+            delimiter: "string atom or square bracket",
+        })
     }
 
     pub fn parse_integer(&self) -> Result<u64, NotaDecodeError> {
@@ -319,17 +316,15 @@ impl<'block> NotaCollection<'block> {
     where
         Parse: FnMut(&Block) -> Result<Element, NotaDecodeError>,
     {
-        match self.block {
-            Block::Delimited {
-                delimiter: Delimiter::SquareBracket,
-                root_objects,
-                ..
-            } => root_objects.iter().map(parse).collect(),
-            _ => Err(NotaDecodeError::ExpectedDelimited {
+        self.block
+            .as_delimited(Delimiter::SquareBracket)
+            .ok_or(NotaDecodeError::ExpectedDelimited {
                 type_name: "Vec",
-                delimiter: "square bracket",
-            }),
-        }
+                delimiter: Delimiter::SquareBracket.description(),
+            })?
+            .iter()
+            .map(parse)
+            .collect()
     }
 
     pub fn parse_map<Key, Value, ParseKey, ParseValue>(
@@ -342,34 +337,28 @@ impl<'block> NotaCollection<'block> {
         ParseKey: FnMut(&Block) -> Result<Key, NotaDecodeError>,
         ParseValue: FnMut(&Block) -> Result<Value, NotaDecodeError>,
     {
-        match self.block {
-            Block::Delimited {
-                delimiter: Delimiter::Brace,
-                root_objects,
-                ..
-            } => {
-                if root_objects.len() % 2 != 0 {
-                    return Err(NotaDecodeError::ExpectedRootCount {
-                        type_name: "BTreeMap",
-                        expected: root_objects.len() + 1,
-                        found: root_objects.len(),
-                    });
-                }
-                let mut map = BTreeMap::new();
-                let mut index = 0;
-                while index < root_objects.len() {
-                    let key = parse_key(&root_objects[index])?;
-                    let value = parse_value(&root_objects[index + 1])?;
-                    map.insert(key, value);
-                    index += 2;
-                }
-                Ok(map)
-            }
-            _ => Err(NotaDecodeError::ExpectedDelimited {
+        let root_objects = self.block.as_delimited(Delimiter::Brace).ok_or(
+            NotaDecodeError::ExpectedDelimited {
                 type_name: "BTreeMap",
-                delimiter: "brace",
-            }),
+                delimiter: Delimiter::Brace.description(),
+            },
+        )?;
+        if root_objects.len() % 2 != 0 {
+            return Err(NotaDecodeError::ExpectedRootCount {
+                type_name: "BTreeMap",
+                expected: root_objects.len() + 1,
+                found: root_objects.len(),
+            });
         }
+        let mut map = BTreeMap::new();
+        let mut index = 0;
+        while index < root_objects.len() {
+            let key = parse_key(&root_objects[index])?;
+            let value = parse_value(&root_objects[index + 1])?;
+            map.insert(key, value);
+            index += 2;
+        }
+        Ok(map)
     }
 
     pub fn parse_option<Inner, Parse>(
@@ -382,12 +371,8 @@ impl<'block> NotaCollection<'block> {
         if self.block.demote_to_string() == Some("None") {
             return Ok(None);
         }
-        let children = NotaBlock::new(self.block).expect_children(
-            Delimiter::Parenthesis,
-            "parenthesis",
-            "Option",
-            2,
-        )?;
+        let children =
+            NotaBlock::new(self.block).expect_children(Delimiter::Parenthesis, "Option", 2)?;
         let tag = children[0]
             .demote_to_string()
             .ok_or(NotaDecodeError::ExpectedAtom {
@@ -400,41 +385,6 @@ impl<'block> NotaCollection<'block> {
             });
         }
         Ok(Some(parse(&children[1])?))
-    }
-
-    pub fn format_vector<Element, Format>(elements: &[Element], format: Format) -> String
-    where
-        Format: FnMut(&Element) -> String,
-    {
-        let parts: Vec<String> = elements.iter().map(format).collect();
-        format!("[{}]", parts.join(" "))
-    }
-
-    pub fn format_map<Key, Value, FormatKey, FormatValue>(
-        map: &BTreeMap<Key, Value>,
-        mut format_key: FormatKey,
-        mut format_value: FormatValue,
-    ) -> String
-    where
-        FormatKey: FnMut(&Key) -> String,
-        FormatValue: FnMut(&Value) -> String,
-    {
-        let mut parts: Vec<String> = Vec::new();
-        for (key, value) in map {
-            parts.push(format_key(key));
-            parts.push(format_value(value));
-        }
-        format!("{{{}}}", parts.join(" "))
-    }
-
-    pub fn format_option<Inner, Format>(value: &Option<Inner>, mut format: Format) -> String
-    where
-        Format: FnMut(&Inner) -> String,
-    {
-        match value {
-            Some(inner) => format!("(Some {})", format(inner)),
-            None => "None".to_owned(),
-        }
     }
 }
 
@@ -492,7 +442,7 @@ where
     Element: NotaEncode,
 {
     fn to_nota(&self) -> String {
-        NotaCollection::format_vector(self, Element::to_nota)
+        Delimiter::SquareBracket.wrap(self.iter().map(Element::to_nota))
     }
 }
 
@@ -512,7 +462,12 @@ where
     Value: NotaEncode,
 {
     fn to_nota(&self) -> String {
-        NotaCollection::format_map(self, Key::to_nota, Value::to_nota)
+        let mut parts: Vec<String> = Vec::new();
+        for (key, value) in self {
+            parts.push(Key::to_nota(key));
+            parts.push(Value::to_nota(value));
+        }
+        Delimiter::Brace.wrap(parts)
     }
 }
 
@@ -530,7 +485,10 @@ where
     Inner: NotaEncode,
 {
     fn to_nota(&self) -> String {
-        NotaCollection::format_option(self, Inner::to_nota)
+        match self {
+            Some(inner) => Delimiter::Parenthesis.wrap(["Some".to_owned(), Inner::to_nota(inner)]),
+            None => "None".to_owned(),
+        }
     }
 }
 

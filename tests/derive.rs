@@ -23,6 +23,14 @@ enum Request {
 }
 
 #[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+enum TypeReference {
+    String,
+    Plain(String),
+    Map(Box<Self>, Box<Self>),
+    Optional(Box<Self>),
+}
+
+#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
 struct TopicMap {
     entries: BTreeMap<Topic, Entry>,
 }
@@ -89,6 +97,41 @@ fn derive_reads_and_writes_enum_shapes() {
     assert_eq!(record.to_nota(), "(Record ([schema] [derive works] 7))");
     assert_eq!(ping, Request::Ping);
     assert_eq!(ping.to_nota(), "Ping");
+}
+
+#[test]
+fn derive_reads_and_writes_multi_field_enum_payloads() {
+    let reference = NotaSource::new("(Map (String (Optional (Plain [Entry]))))")
+        .parse::<TypeReference>()
+        .expect("multi-field enum variant decodes");
+
+    assert_eq!(
+        reference,
+        TypeReference::Map(
+            Box::new(TypeReference::String),
+            Box::new(TypeReference::Optional(Box::new(TypeReference::Plain(
+                "Entry".to_owned()
+            )))),
+        )
+    );
+    assert_eq!(
+        reference.to_nota(),
+        "(Map (String (Optional (Plain [Entry]))))"
+    );
+}
+
+#[test]
+fn derive_rejects_multi_field_enum_payloads_with_wrong_tuple_size() {
+    let error = NotaSource::new("(Map (String))")
+        .parse::<TypeReference>()
+        .expect_err("multi-field enum variant requires its tuple payload");
+
+    assert!(
+        error
+            .to_string()
+            .contains("expected Map to hold 2 root objects"),
+        "error was {error}"
+    );
 }
 
 #[test]

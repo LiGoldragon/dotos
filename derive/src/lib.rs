@@ -207,7 +207,6 @@ impl StructDerive {
                         fn from_nota_block(block: &::nota_next::Block) -> Result<Self, ::nota_next::NotaDecodeError> {
                             let children = ::nota_next::NotaBlock::new(block).expect_children(
                                 ::nota_next::Delimiter::Parenthesis,
-                                "parenthesis",
                                 #type_name,
                                 #field_count,
                             )?;
@@ -429,7 +428,6 @@ impl EnumDerive {
                     }
                     let children = ::nota_next::NotaBlock::new(block).expect_children(
                         ::nota_next::Delimiter::Parenthesis,
-                        "parenthesis",
                         #enum_name,
                         2,
                     )?;
@@ -511,14 +509,29 @@ impl<'variant> PayloadVariantDecode<'variant> {
                     #tag => Ok(#enum_name::#variant_name(<#field_type as ::nota_next::NotaDecode>::from_nota_block(&children[1])?)),
                 }
             }
-            Fields::Unnamed(fields) => Error::new_spanned(
-                fields,
-                "NotaDecode enum payload variants must carry exactly one unnamed field",
-            )
-            .to_compile_error(),
+            Fields::Unnamed(fields) => {
+                let field_count = fields.unnamed.len();
+                let field_decode = fields.unnamed.iter().enumerate().map(|(index, field)| {
+                    let field_type = &field.ty;
+                    let index = Index::from(index);
+                    quote! {
+                        <#field_type as ::nota_next::NotaDecode>::from_nota_block(&payload_children[#index])?
+                    }
+                });
+                quote! {
+                    #tag => {
+                        let payload_children = ::nota_next::NotaBlock::new(&children[1]).expect_children(
+                            ::nota_next::Delimiter::Parenthesis,
+                            #tag,
+                            #field_count,
+                        )?;
+                        Ok(#enum_name::#variant_name(#(#field_decode),*))
+                    }
+                }
+            }
             Fields::Named(fields) => Error::new_spanned(
                 fields,
-                "NotaDecode enum payload variants must carry one unnamed field, not named fields",
+                "NotaDecode enum payload variants must carry unnamed fields, not named fields",
             )
             .to_compile_error(),
             Fields::Unit => {
@@ -551,18 +564,37 @@ impl<'variant> VariantEncode<'variant> {
                 let binding = format_ident!("payload");
                 quote! {
                     #enum_name::#variant_name(#binding) => {
-                        format!("({} {})", #tag, ::nota_next::NotaEncode::to_nota(#binding))
+                        ::nota_next::Delimiter::Parenthesis.wrap([
+                            #tag.to_owned(),
+                            ::nota_next::NotaEncode::to_nota(#binding),
+                        ])
                     }
                 }
             }
-            Fields::Unnamed(fields) => Error::new_spanned(
-                fields,
-                "NotaEncode enum payload variants must carry exactly one unnamed field",
-            )
-            .to_compile_error(),
+            Fields::Unnamed(fields) => {
+                let bindings = (0..fields.unnamed.len())
+                    .map(|index| format_ident!("payload_field_{}", index))
+                    .collect::<Vec<_>>();
+                let encoded_fields = bindings.iter().map(|binding| {
+                    quote! {
+                        ::nota_next::NotaEncode::to_nota(#binding)
+                    }
+                });
+                quote! {
+                    #enum_name::#variant_name(#(#bindings),*) => {
+                        let payload = ::nota_next::Delimiter::Parenthesis.wrap([
+                            #(#encoded_fields),*
+                        ]);
+                        ::nota_next::Delimiter::Parenthesis.wrap([
+                            #tag.to_owned(),
+                            payload,
+                        ])
+                    }
+                }
+            }
             Fields::Named(fields) => Error::new_spanned(
                 fields,
-                "NotaEncode enum payload variants must carry one unnamed field, not named fields",
+                "NotaEncode enum payload variants must carry unnamed fields, not named fields",
             )
             .to_compile_error(),
         }
