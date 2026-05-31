@@ -43,6 +43,12 @@ fixtures and lower layers, but they are no longer the authored schema target.*
 vectors, ordered maps, and options as NOTA values. Schema owns the type-name
 vocabulary and declaration semantics layered above those value shapes.*
 
+*Known-root files are decoded as document bodies. When a caller already knows
+the root type, NOTA should expose the ordered root objects as that type's body
+instead of requiring an outer wrapper object. `NotaDocumentBody` and
+`NotaDocumentEncoding` own that parse/format boundary so higher layers do not
+hand-join field strings.*
+
 *The shared NOTA codec includes derive macros for generated and hand-written
 Rust nouns. Schema-generated Rust should derive `NotaDecode` and `NotaEncode`
 instead of hand-emitting per-type codec implementations.*

@@ -21,6 +21,10 @@
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, string formatting, and collection value shapes.
+- `NotaDocumentBody` and `NotaDocumentEncoding` are the known-root document
+  helpers. They expose a file's root object stream as the body of the caller's
+  known type, and they format the ordered body fields back to NOTA without an
+  outer wrapper.
 - `Box<T>` is a storage wrapper only. Its codec delegates to `T` so recursive
   Rust data does not create a second NOTA shape.
 - `macros` is the reusable macro-node mechanism. `MacroNodeDefinition`
@@ -72,3 +76,10 @@ The codec's collection value shapes are structural NOTA values: `Vec<T>` is a
 square-bracket block, `BTreeMap<K, V>` is a brace block of key/value pairs, and
 `Option<T>` is `None` or `(Some value)`. Those are serialization shapes, not
 schema declaration syntax.
+
+The codec also has a known-root document-body path. `NotaSource::parse` remains
+the single-root-object path for ordinary values. `NotaSource::parse_document_body`
+is the file/body path for callers that already know the root type from context,
+such as a `.schema` or `.asschema` reader. In that mode the document itself is
+the outer product; the caller's `NotaDocumentDecode` implementation assigns the
+root objects to typed fields.
