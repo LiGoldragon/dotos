@@ -178,8 +178,18 @@ impl<'source> NotaSource<'source> {
         let body = NotaDocumentBody::new(&document);
         Value::from_nota_document_body(&body)
     }
+
+    pub fn parse_body<Value>(&self) -> Result<Value, NotaDecodeError>
+    where
+        Value: NotaBodyDecode,
+    {
+        let document = Document::parse(self.source)?;
+        let body = NotaBody::from_document(&document);
+        Value::from_nota_body(&body)
+    }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct NotaBody<'body> {
     root_objects: &'body [Block],
 }

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use nota_next::{
-    Block, NotaDecode, NotaDecodeError, NotaDocumentEncode, NotaEncode,
+    Block, Delimiter, Document, NotaDecode, NotaDecodeError, NotaDocumentEncode, NotaEncode,
     NotaNamedDocumentFieldDecode, NotaNamedDocumentFieldEncode, NotaSource,
 };
 
@@ -154,6 +154,9 @@ fn derive_reads_and_writes_known_root_document_bodies() {
     let document = source
         .parse_document_body::<KnownRootDocument>()
         .expect("known-root body decodes");
+    let body_document = source
+        .parse_body::<KnownRootDocument>()
+        .expect("known-root body decodes through semantic body API");
     let object = NotaSource::new("([schema] [] [[Record] [Observe]])")
         .parse::<KnownRootDocument>()
         .expect("parenthesized object body decodes");
@@ -161,9 +164,50 @@ fn derive_reads_and_writes_known_root_document_bodies() {
     assert_eq!(document.name, "schema");
     assert_eq!(document.input.name, "Input");
     assert_eq!(document.input.variants, ["Record", "Observe"]);
+    assert_eq!(document, body_document);
     assert_eq!(document, object);
     assert_eq!(
         document.to_nota_document_body().to_nota(),
         "[schema]\n[]\n[[Record] [Observe]]"
     );
+}
+
+#[test]
+fn derive_body_parser_is_wrapper_agnostic_for_struct_types() {
+    let wrapped = Document::parse("([schema] [derive works] 7)").expect("wrapped form parses");
+    let wrapper_root = wrapped.root_object_at(0).expect("one root object");
+    let wrapper_body = wrapper_root
+        .as_delimited(Delimiter::Parenthesis)
+        .expect("wrapper is parenthesized");
+    let from_wrapper = Entry::from_body_objects(wrapper_body).expect("body decodes");
+
+    let unwrapped = Document::parse("[schema] [derive works] 7").expect("body-only form parses");
+    let from_file_root = Entry::from_body_objects(unwrapped.root_objects()).expect("body decodes");
+
+    assert_eq!(from_wrapper, from_file_root);
+    assert_eq!(
+        from_file_root,
+        Entry {
+            topic: Topic(String::from("schema")),
+            description: String::from("derive works"),
+            magnitude: 7,
+        }
+    );
+}
+
+#[test]
+fn derive_body_parser_validates_field_count() {
+    let too_few = Document::parse("[schema] [derive works]").expect("source parses");
+    let error = Entry::from_body_objects(too_few.root_objects())
+        .expect_err("two-field body cannot fill three-field struct");
+    let message = error.to_string();
+    assert!(
+        message.contains("Entry") && message.contains("3 root objects"),
+        "error was {message}"
+    );
+
+    let too_many = Document::parse("[schema] [derive works] 7 [stray]").expect("source parses");
+    let error = Entry::from_body_objects(too_many.root_objects())
+        .expect_err("four-object body cannot fill three-field struct");
+    assert!(error.to_string().contains("Entry"), "error was {error}");
 }

@@ -41,7 +41,20 @@ fn dispatches_structural_namespace_pair_with_named_captures() {
             .get(&CaptureName::new("type_name"))
             .is_some()
     );
-    assert!(matched.captures().get(&CaptureName::new("body")).is_some());
+    let body = matched
+        .captures()
+        .get(&CaptureName::new("body"))
+        .and_then(|capture| capture.body())
+        .expect("delimited capture exposes body content");
+    assert_eq!(body.root_objects().len(), 4);
+    assert!(
+        matched
+            .captures()
+            .get(&CaptureName::new("body"))
+            .and_then(|capture| capture.block())
+            .is_none(),
+        "delimited captures do not hand the wrapper delimiter to the next semantic parser"
+    );
 }
 
 #[test]

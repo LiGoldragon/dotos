@@ -31,7 +31,8 @@
   delegate into that body implementation.
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
-  expectation, string formatting, and collection value shapes.
+  expectation, direct body parsing, string formatting, and collection value
+  shapes.
 - `NotaDocumentBody` and `NotaDocumentEncoding` are the known-root document
   compatibility helpers over the shared body layer. They expose a file's root
   object stream as the body of the caller's known type, and they format the
@@ -45,7 +46,9 @@
 - `macros` is the reusable macro-node mechanism. `MacroNodeDefinition`
   describes a structural pattern at a position, `MacroRegistry` dispatches a
   candidate block sequence through ordered definitions, and `MacroMatch`
-  returns named captures to the consumer. The mechanism is semantic-neutral:
+  returns named captures to the consumer. Delimited captures expose the matched
+  block's inner `NotaBody`, not the wrapper delimiter, so the next semantic
+  parser always receives body contents. The mechanism is semantic-neutral:
   schema-next may register struct/enum/newtype patterns, but nota-next only
   matches atoms, delimiters, literals, and rest captures. A delimited pattern
   can carry a recursive `Pattern` over that block's children, giving consumers

@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt};
 
-use crate::{Atom, Block, Delimiter};
+use crate::{Atom, Block, Delimiter, NotaBody};
 
 #[derive(
     rkyv::Archive,
@@ -528,7 +528,10 @@ impl DelimitedShape {
             captures.extend(children.matches(&child_blocks)?);
         }
         if let Some(capture_name) = &self.capture {
-            captures.insert(capture_name.clone(), CapturedValue::Block(block));
+            captures.insert(
+                capture_name.clone(),
+                CapturedValue::Body(NotaBody::new(block.root_objects())),
+            );
         }
         Some(())
     }
@@ -723,13 +726,21 @@ impl Default for MacroCaptures<'_> {
 pub enum CapturedValue<'block> {
     Block(&'block Block),
     Blocks(Vec<&'block Block>),
+    Body(NotaBody<'block>),
 }
 
 impl<'block> CapturedValue<'block> {
     pub fn block(&self) -> Option<&'block Block> {
         match self {
             Self::Block(block) => Some(block),
-            Self::Blocks(_) => None,
+            Self::Blocks(_) | Self::Body(_) => None,
+        }
+    }
+
+    pub fn body(&self) -> Option<&NotaBody<'block>> {
+        match self {
+            Self::Body(body) => Some(body),
+            Self::Block(_) | Self::Blocks(_) => None,
         }
     }
 
@@ -737,6 +748,7 @@ impl<'block> CapturedValue<'block> {
         match self {
             Self::Block(block) => std::slice::from_ref(block),
             Self::Blocks(blocks) => blocks,
+            Self::Body(_) => &[],
         }
     }
 }

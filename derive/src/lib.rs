@@ -183,7 +183,7 @@ impl StructDerive {
                     quote! {
                         impl #implementation_generics ::nota_next::NotaDocumentDecode for #name #type_generics #where_clause {
                             fn from_nota_document_body(body: &::nota_next::NotaDocumentBody<'_>) -> Result<Self, ::nota_next::NotaDecodeError> {
-                                <Self as ::nota_next::NotaBodyDecode>::from_nota_body(body.as_body())
+                                Self::from_body_objects(body.root_objects())
                             }
                         }
                     }
@@ -191,12 +191,24 @@ impl StructDerive {
                     quote! {}
                 };
                 quote! {
-                    impl #implementation_generics ::nota_next::NotaBodyDecode for #name #type_generics #where_clause {
-                        fn from_nota_body(body: &::nota_next::NotaBody<'_>) -> Result<Self, ::nota_next::NotaDecodeError> {
-                            let children = body.expect_fields(#type_name, #field_count)?;
+                    impl #implementation_generics #name #type_generics #where_clause {
+                        pub fn from_body_objects(objects: &[::nota_next::Block]) -> Result<Self, ::nota_next::NotaDecodeError> {
+                            if objects.len() != #field_count {
+                                return Err(::nota_next::NotaDecodeError::ExpectedRootCount {
+                                    type_name: #type_name,
+                                    expected: #field_count,
+                                    found: objects.len(),
+                                });
+                            }
+                            let children = objects;
                             Ok(Self {
                                 #(#body_fields,)*
                             })
+                        }
+                    }
+                    impl #implementation_generics ::nota_next::NotaBodyDecode for #name #type_generics #where_clause {
+                        fn from_nota_body(body: &::nota_next::NotaBody<'_>) -> Result<Self, ::nota_next::NotaDecodeError> {
+                            Self::from_body_objects(body.root_objects())
                         }
                     }
                     impl #implementation_generics ::nota_next::NotaDecode for #name #type_generics #where_clause {
