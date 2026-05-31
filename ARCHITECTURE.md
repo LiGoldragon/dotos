@@ -19,20 +19,23 @@
 - Structural candidate methods use `qualifies_as_*`.
 - `NotaDecode` and `NotaEncode` are the shared NOTA value-codec traits used by
   hand-written Rust and by schema-emitted Rust.
+- `NotaBody`, `NotaBodyDecode`, and `NotaBodyEncode` are the shared
+  inner-object-stream codec layer. A matched file body or delimited block
+  yields a body; the expected Rust type decides how to read that ordered stream.
 - `nota-next-derive` is the proc-macro companion crate re-exported by
   `nota-next`. It derives `NotaDecode` and `NotaEncode` for named structs,
   one-field tuple newtypes, unit enum variants, one-payload enum variants, and
   enum variants with multiple unnamed fields encoded as `(Variant (field1
-  field2 ...))`. The same derives honor `#[nota(known_root)]` on named structs
-  by emitting `NotaDocumentDecode` and `NotaDocumentEncode` implementations
-  over the document body.
+  field2 ...))`. Named struct derive emits body decode/encode first; ordinary
+  parenthesized struct decode and `#[nota(known_root)]` document decode both
+  delegate into that body implementation.
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, string formatting, and collection value shapes.
 - `NotaDocumentBody` and `NotaDocumentEncoding` are the known-root document
-  helpers. They expose a file's root object stream as the body of the caller's
-  known type, and they format the ordered body fields back to NOTA without an
-  outer wrapper.
+  compatibility helpers over the shared body layer. They expose a file's root
+  object stream as the body of the caller's known type, and they format the
+  ordered body fields back to NOTA without an outer wrapper.
 - `NotaNamedDocumentFieldDecode` and `NotaNamedDocumentFieldEncode` let a
   known-root field be decoded from a positional body slot while receiving a
   name supplied by the root shape, for example an `Input` enum whose variants
@@ -92,11 +95,13 @@ square-bracket block, `BTreeMap<K, V>` is a brace block of key/value pairs, and
 `Option<T>` is `None` or `(Some value)`. Those are serialization shapes, not
 schema declaration syntax.
 
-The codec also has a known-root document-body path. `NotaSource::parse` remains
-the single-root-object path for ordinary values. `NotaSource::parse_document_body`
-is the file/body path for callers that already know the root type from context,
-such as a `.schema` or `.asschema` reader. In that mode the document itself is
-the outer product; the caller's `NotaDocumentDecode` implementation assigns the
-root objects to typed fields. For ordinary structs this implementation should
-come from `#[nota(known_root)]`, not from ad hoc string joins or hand-written
-per-root field readers.
+The codec has a shared body-content path. `NotaSource::parse` remains the
+single-root-object path for ordinary values; after it matches the outer
+parentheses of a named struct, derive hands the inner root-object stream to the
+type's `NotaBodyDecode` implementation. `NotaSource::parse_document_body` is
+the file/body path for callers that already know the root type from context,
+such as a `.schema` or `.asschema` reader; it hands the document's ordered root
+objects to the same body logic through `NotaDocumentDecode`. The structural
+match decides where the body begins. The expected type decides whether the body
+is read as positional struct fields, a vector stream, an enum-like variant
+body, or another value shape.

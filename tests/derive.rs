@@ -154,10 +154,14 @@ fn derive_reads_and_writes_known_root_document_bodies() {
     let document = source
         .parse_document_body::<KnownRootDocument>()
         .expect("known-root body decodes");
+    let object = NotaSource::new("([schema] [] [[Record] [Observe]])")
+        .parse::<KnownRootDocument>()
+        .expect("parenthesized object body decodes");
 
     assert_eq!(document.name, "schema");
     assert_eq!(document.input.name, "Input");
     assert_eq!(document.input.variants, ["Record", "Observe"]);
+    assert_eq!(document, object);
     assert_eq!(
         document.to_nota_document_body().to_nota(),
         "[schema]\n[]\n[[Record] [Observe]]"

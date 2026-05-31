@@ -51,6 +51,12 @@ hand-join field strings. The `#[nota(known_root)]` derive attribute makes this
 the normal code path for typed Rust nouns that read a whole file as the known
 root body.*
 
+*After NOTA structural parsing matches a file body or a delimited object, the
+next semantic parsing step should receive the matched body's inner object
+stream rather than the outer delimiter wrapper. Known-root files and matched
+delimited objects share the same body abstraction: the expected type decides
+whether the body is read as a struct, vector, enum variant, or other value.*
+
 *The shared NOTA codec includes derive macros for generated and hand-written
 Rust nouns. Schema-generated Rust should derive `NotaDecode` and `NotaEncode`
 instead of hand-emitting per-type codec implementations.*

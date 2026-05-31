@@ -81,6 +81,14 @@ pub trait NotaEncode {
     fn to_nota(&self) -> String;
 }
 
+pub trait NotaBodyDecode: Sized {
+    fn from_nota_body(body: &NotaBody<'_>) -> Result<Self, NotaDecodeError>;
+}
+
+pub trait NotaBodyEncode {
+    fn to_nota_body(&self) -> NotaBodyEncoding;
+}
+
 pub trait NotaDocumentDecode: Sized {
     fn from_nota_document_body(body: &NotaDocumentBody<'_>) -> Result<Self, NotaDecodeError>;
 }
@@ -98,6 +106,38 @@ pub trait NotaNamedDocumentFieldDecode: Sized {
 
 pub trait NotaNamedDocumentFieldEncode {
     fn to_nota_named_document_field_body(&self) -> String;
+}
+
+pub trait NotaNamedBodyFieldDecode: Sized {
+    fn from_nota_named_body_field(
+        name: &'static str,
+        block: &Block,
+    ) -> Result<Self, NotaDecodeError>;
+}
+
+pub trait NotaNamedBodyFieldEncode {
+    fn to_nota_named_body_field(&self) -> String;
+}
+
+impl<Value> NotaNamedBodyFieldDecode for Value
+where
+    Value: NotaNamedDocumentFieldDecode,
+{
+    fn from_nota_named_body_field(
+        name: &'static str,
+        block: &Block,
+    ) -> Result<Self, NotaDecodeError> {
+        Value::from_nota_named_document_field(name, block)
+    }
+}
+
+impl<Value> NotaNamedBodyFieldEncode for Value
+where
+    Value: NotaNamedDocumentFieldEncode,
+{
+    fn to_nota_named_body_field(&self) -> String {
+        self.to_nota_named_document_field_body()
+    }
 }
 
 pub struct NotaSource<'source> {
@@ -140,24 +180,43 @@ impl<'source> NotaSource<'source> {
     }
 }
 
-pub struct NotaDocumentBody<'document> {
-    document: &'document Document,
+pub struct NotaBody<'body> {
+    root_objects: &'body [Block],
 }
 
-impl<'document> NotaDocumentBody<'document> {
-    pub fn new(document: &'document Document) -> Self {
-        Self { document }
+impl<'body> NotaBody<'body> {
+    pub fn new(root_objects: &'body [Block]) -> Self {
+        Self { root_objects }
     }
 
-    pub fn root_objects(&self) -> &'document [Block] {
-        self.document.root_objects()
+    pub fn from_document(document: &'body Document) -> Self {
+        Self::new(document.root_objects())
+    }
+
+    pub fn from_delimited(
+        block: &'body Block,
+        delimiter: Delimiter,
+        type_name: &'static str,
+    ) -> Result<Self, NotaDecodeError> {
+        let root_objects =
+            block
+                .as_delimited(delimiter)
+                .ok_or(NotaDecodeError::ExpectedDelimited {
+                    type_name,
+                    delimiter: delimiter.description(),
+                })?;
+        Ok(Self::new(root_objects))
+    }
+
+    pub fn root_objects(&self) -> &'body [Block] {
+        self.root_objects
     }
 
     pub fn expect_fields(
         &self,
         type_name: &'static str,
         expected: usize,
-    ) -> Result<&'document [Block], NotaDecodeError> {
+    ) -> Result<&'body [Block], NotaDecodeError> {
         let found = self.root_objects().len();
         if found != expected {
             return Err(NotaDecodeError::ExpectedRootCount {
@@ -170,11 +229,43 @@ impl<'document> NotaDocumentBody<'document> {
     }
 }
 
-pub struct NotaDocumentEncoding {
+pub struct NotaDocumentBody<'document> {
+    body: NotaBody<'document>,
+}
+
+impl<'document> NotaDocumentBody<'document> {
+    pub fn new(document: &'document Document) -> Self {
+        Self {
+            body: NotaBody::from_document(document),
+        }
+    }
+
+    pub fn from_body(body: NotaBody<'document>) -> Self {
+        Self { body }
+    }
+
+    pub fn as_body(&self) -> &NotaBody<'document> {
+        &self.body
+    }
+
+    pub fn root_objects(&self) -> &'document [Block] {
+        self.body.root_objects()
+    }
+
+    pub fn expect_fields(
+        &self,
+        type_name: &'static str,
+        expected: usize,
+    ) -> Result<&'document [Block], NotaDecodeError> {
+        self.body.expect_fields(type_name, expected)
+    }
+}
+
+pub struct NotaBodyEncoding {
     fields: Vec<String>,
 }
 
-impl NotaDocumentEncoding {
+impl NotaBodyEncoding {
     pub fn new(fields: Vec<String>) -> Self {
         Self { fields }
     }
@@ -186,7 +277,13 @@ impl NotaDocumentEncoding {
     pub fn to_nota(&self) -> String {
         self.fields.join("\n")
     }
+
+    pub fn to_delimited_nota(&self, delimiter: Delimiter) -> String {
+        delimiter.wrap(self.fields.iter().cloned())
+    }
 }
+
+pub type NotaDocumentEncoding = NotaBodyEncoding;
 
 pub struct NotaBlock<'block> {
     block: &'block Block,
@@ -203,15 +300,8 @@ impl<'block> NotaBlock<'block> {
         type_name: &'static str,
         expected: usize,
     ) -> Result<&'block [Block], NotaDecodeError> {
-        let root_objects = self.expect_delimited(delimiter, type_name)?;
-        if root_objects.len() != expected {
-            return Err(NotaDecodeError::ExpectedRootCount {
-                type_name,
-                expected,
-                found: root_objects.len(),
-            });
-        }
-        Ok(root_objects)
+        self.expect_body(delimiter, type_name)?
+            .expect_fields(type_name, expected)
     }
 
     pub fn expect_delimited(
@@ -219,12 +309,15 @@ impl<'block> NotaBlock<'block> {
         delimiter: Delimiter,
         type_name: &'static str,
     ) -> Result<&'block [Block], NotaDecodeError> {
-        self.block
-            .as_delimited(delimiter)
-            .ok_or(NotaDecodeError::ExpectedDelimited {
-                type_name,
-                delimiter: delimiter.description(),
-            })
+        Ok(self.expect_body(delimiter, type_name)?.root_objects())
+    }
+
+    pub fn expect_body(
+        &self,
+        delimiter: Delimiter,
+        type_name: &'static str,
+    ) -> Result<NotaBody<'block>, NotaDecodeError> {
+        NotaBody::from_delimited(self.block, delimiter, type_name)
     }
 
     pub fn parse_string(&self) -> Result<String, NotaDecodeError> {
@@ -443,6 +536,27 @@ where
 {
     fn to_nota(&self) -> String {
         Delimiter::SquareBracket.wrap(self.iter().map(Element::to_nota))
+    }
+}
+
+impl<Element> NotaBodyDecode for Vec<Element>
+where
+    Element: NotaDecode,
+{
+    fn from_nota_body(body: &NotaBody<'_>) -> Result<Self, NotaDecodeError> {
+        body.root_objects()
+            .iter()
+            .map(Element::from_nota_block)
+            .collect()
+    }
+}
+
+impl<Element> NotaBodyEncode for Vec<Element>
+where
+    Element: NotaEncode,
+{
+    fn to_nota_body(&self) -> NotaBodyEncoding {
+        NotaBodyEncoding::new(self.iter().map(Element::to_nota).collect())
     }
 }
 

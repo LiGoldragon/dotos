@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use nota_next::{
-    Block, Delimiter, NotaDecode, NotaDecodeError, NotaDocumentBody, NotaDocumentDecode,
-    NotaDocumentEncode, NotaDocumentEncoding, NotaEncode, NotaSource,
+    Block, Delimiter, NotaBlock, NotaBody, NotaBodyDecode, NotaBodyEncode, NotaDecode,
+    NotaDecodeError, NotaDocumentBody, NotaDocumentDecode, NotaDocumentEncode,
+    NotaDocumentEncoding, NotaEncode, NotaSource,
 };
 
 #[test]
@@ -95,8 +96,8 @@ struct KnownRootExample {
     output_variants: Vec<String>,
 }
 
-impl NotaDocumentDecode for KnownRootExample {
-    fn from_nota_document_body(body: &NotaDocumentBody<'_>) -> Result<Self, NotaDecodeError> {
+impl NotaBodyDecode for KnownRootExample {
+    fn from_nota_body(body: &NotaBody<'_>) -> Result<Self, NotaDecodeError> {
         let fields = body.expect_fields("KnownRootExample", 3)?;
         Ok(Self {
             name: String::from_nota_block(&fields[0])?,
@@ -106,13 +107,25 @@ impl NotaDocumentDecode for KnownRootExample {
     }
 }
 
-impl NotaDocumentEncode for KnownRootExample {
-    fn to_nota_document_body(&self) -> NotaDocumentEncoding {
+impl NotaBodyEncode for KnownRootExample {
+    fn to_nota_body(&self) -> nota_next::NotaBodyEncoding {
         NotaDocumentEncoding::new(vec![
             self.name.to_nota(),
             self.imports.to_nota(),
             self.output_variants.to_nota(),
         ])
+    }
+}
+
+impl NotaDocumentDecode for KnownRootExample {
+    fn from_nota_document_body(body: &NotaDocumentBody<'_>) -> Result<Self, NotaDecodeError> {
+        Self::from_nota_body(body.as_body())
+    }
+}
+
+impl NotaDocumentEncode for KnownRootExample {
+    fn to_nota_document_body(&self) -> NotaDocumentEncoding {
+        self.to_nota_body()
     }
 }
 
@@ -124,6 +137,22 @@ impl KnownRootExample {
     fn to_nota(&self) -> String {
         self.to_nota_document_body().to_nota()
     }
+}
+
+#[test]
+fn codec_decodes_known_root_and_parenthesized_object_from_the_same_body_shape() {
+    let document_body = NotaSource::new("[schema-next:core]\n[alpha beta]\n[Recorded Rejected]")
+        .parse_document_body::<KnownRootExample>()
+        .expect("document body decodes");
+    let block = NotaSource::new("([schema-next:core] [alpha beta] [Recorded Rejected])")
+        .parse_root()
+        .expect("parenthesized object parses");
+    let object_body = NotaBlock::new(&block)
+        .expect_body(Delimiter::Parenthesis, "KnownRootExample")
+        .expect("object body opens");
+    let object_value = KnownRootExample::from_nota_body(&object_body).expect("object body decodes");
+
+    assert_eq!(document_body, object_value);
 }
 
 #[test]

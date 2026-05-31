@@ -13,9 +13,10 @@ mod macros;
 mod parser;
 
 pub use codec::{
-    NotaBlock, NotaCollection, NotaDecode, NotaDecodeError, NotaDocumentBody, NotaDocumentDecode,
-    NotaDocumentEncode, NotaDocumentEncoding, NotaEncode, NotaNamedDocumentFieldDecode,
-    NotaNamedDocumentFieldEncode, NotaSource, NotaString,
+    NotaBlock, NotaBody, NotaBodyDecode, NotaBodyEncode, NotaBodyEncoding, NotaCollection,
+    NotaDecode, NotaDecodeError, NotaDocumentBody, NotaDocumentDecode, NotaDocumentEncode,
+    NotaDocumentEncoding, NotaEncode, NotaNamedBodyFieldDecode, NotaNamedBodyFieldEncode,
+    NotaNamedDocumentFieldDecode, NotaNamedDocumentFieldEncode, NotaSource, NotaString,
 };
 pub use macros::{
     AtomCase, AtomShape, CaptureName, CapturedValue, DelimitedShape, MacroCandidate, MacroConflict,
