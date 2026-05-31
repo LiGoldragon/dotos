@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use nota_next::{NotaEncode, NotaSource};
+use nota_next::{
+    Block, Delimiter, NotaDecode, NotaDecodeError, NotaDocumentBody, NotaDocumentDecode,
+    NotaDocumentEncode, NotaDocumentEncoding, NotaEncode, NotaSource,
+};
 
 #[test]
 fn codec_decodes_and_encodes_scalars() {
@@ -83,4 +86,80 @@ fn codec_rejects_multi_root_source_for_typed_parse() {
             .to_string()
             .contains("expected exactly one NOTA root object")
     );
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct KnownRootExample {
+    name: String,
+    imports: Vec<String>,
+    output_variants: Vec<String>,
+}
+
+impl NotaDocumentDecode for KnownRootExample {
+    fn from_nota_document_body(body: &NotaDocumentBody<'_>) -> Result<Self, NotaDecodeError> {
+        let fields = body.expect_fields("KnownRootExample", 3)?;
+        Ok(Self {
+            name: String::from_nota_block(&fields[0])?,
+            imports: Vec::<String>::from_nota_block(&fields[1])?,
+            output_variants: Vec::<String>::from_nota_block(&fields[2])?,
+        })
+    }
+}
+
+impl NotaDocumentEncode for KnownRootExample {
+    fn to_nota_document_body(&self) -> NotaDocumentEncoding {
+        NotaDocumentEncoding::new(vec![
+            self.name.to_nota(),
+            self.imports.to_nota(),
+            self.output_variants.to_nota(),
+        ])
+    }
+}
+
+impl KnownRootExample {
+    fn from_nota_source(source: &str) -> Result<Self, NotaDecodeError> {
+        NotaSource::new(source).parse_document_body()
+    }
+
+    fn to_nota(&self) -> String {
+        self.to_nota_document_body().to_nota()
+    }
+}
+
+#[test]
+fn codec_decodes_and_encodes_known_root_document_body() {
+    let source = "[schema-next:core]\n[alpha beta]\n[Recorded Rejected]";
+    let value = KnownRootExample::from_nota_source(source).expect("known root body decodes");
+
+    assert_eq!(
+        value,
+        KnownRootExample {
+            name: "schema-next:core".to_owned(),
+            imports: vec!["alpha".to_owned(), "beta".to_owned()],
+            output_variants: vec!["Recorded".to_owned(), "Rejected".to_owned()],
+        }
+    );
+    assert_eq!(
+        value.to_nota(),
+        "[schema-next:core]\n[[alpha] [beta]]\n[[Recorded] [Rejected]]"
+    );
+}
+
+#[test]
+fn codec_known_root_body_preserves_raw_root_structure_for_callers() {
+    let value =
+        KnownRootExample::from_nota_source("[core]\n[]\n[]").expect("empty body vectors decode");
+    let encoding = value.to_nota_document_body();
+    let reparsed =
+        nota_next::Document::parse(encoding.to_nota()).expect("known-root body emits legal NOTA");
+
+    assert_eq!(encoding.fields().len(), 3);
+    assert_eq!(reparsed.root_objects().len(), 3);
+    assert!(matches!(
+        reparsed.root_objects().get(1),
+        Some(Block::Delimited {
+            delimiter: Delimiter::SquareBracket,
+            ..
+        })
+    ));
 }

@@ -13,7 +13,8 @@ mod macros;
 mod parser;
 
 pub use codec::{
-    NotaBlock, NotaCollection, NotaDecode, NotaDecodeError, NotaEncode, NotaSource, NotaString,
+    NotaBlock, NotaCollection, NotaDecode, NotaDecodeError, NotaDocumentBody, NotaDocumentDecode,
+    NotaDocumentEncode, NotaDocumentEncoding, NotaEncode, NotaSource, NotaString,
 };
 pub use macros::{
     AtomCase, AtomShape, CaptureName, CapturedValue, DelimitedShape, MacroCandidate, MacroConflict,

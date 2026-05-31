@@ -81,6 +81,14 @@ pub trait NotaEncode {
     fn to_nota(&self) -> String;
 }
 
+pub trait NotaDocumentDecode: Sized {
+    fn from_nota_document_body(body: &NotaDocumentBody<'_>) -> Result<Self, NotaDecodeError>;
+}
+
+pub trait NotaDocumentEncode {
+    fn to_nota_document_body(&self) -> NotaDocumentEncoding;
+}
+
 pub struct NotaSource<'source> {
     source: &'source str,
 }
@@ -109,6 +117,63 @@ impl<'source> NotaSource<'source> {
     {
         let root = self.parse_root()?;
         Value::from_nota_block(&root)
+    }
+
+    pub fn parse_document_body<Value>(&self) -> Result<Value, NotaDecodeError>
+    where
+        Value: NotaDocumentDecode,
+    {
+        let document = Document::parse(self.source)?;
+        let body = NotaDocumentBody::new(&document);
+        Value::from_nota_document_body(&body)
+    }
+}
+
+pub struct NotaDocumentBody<'document> {
+    document: &'document Document,
+}
+
+impl<'document> NotaDocumentBody<'document> {
+    pub fn new(document: &'document Document) -> Self {
+        Self { document }
+    }
+
+    pub fn root_objects(&self) -> &'document [Block] {
+        self.document.root_objects()
+    }
+
+    pub fn expect_fields(
+        &self,
+        type_name: &'static str,
+        expected: usize,
+    ) -> Result<&'document [Block], NotaDecodeError> {
+        let found = self.root_objects().len();
+        if found != expected {
+            return Err(NotaDecodeError::ExpectedRootCount {
+                type_name,
+                expected,
+                found,
+            });
+        }
+        Ok(self.root_objects())
+    }
+}
+
+pub struct NotaDocumentEncoding {
+    fields: Vec<String>,
+}
+
+impl NotaDocumentEncoding {
+    pub fn new(fields: Vec<String>) -> Self {
+        Self { fields }
+    }
+
+    pub fn fields(&self) -> &[String] {
+        &self.fields
+    }
+
+    pub fn to_nota(&self) -> String {
+        self.fields.join("\n")
     }
 }
 
