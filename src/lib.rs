@@ -14,12 +14,14 @@ mod parser;
 
 pub use codec::{
     NotaBlock, NotaCollection, NotaDecode, NotaDecodeError, NotaDocumentBody, NotaDocumentDecode,
-    NotaDocumentEncode, NotaDocumentEncoding, NotaEncode, NotaSource, NotaString,
+    NotaDocumentEncode, NotaDocumentEncoding, NotaEncode, NotaNamedDocumentFieldDecode,
+    NotaNamedDocumentFieldEncode, NotaSource, NotaString,
 };
 pub use macros::{
-    AtomCase, AtomShape, CaptureName, CapturedValue, DelimitedShape, MacroCandidate, MacroConflict,
-    MacroDelimiter, MacroError, MacroMatch, MacroNodeDefinition, MacroObjectCount, MacroRegistry,
-    Pattern, PatternElement, PositionPredicate, SigilPosition, SigilSpec,
+    AtomCase, AtomShape, CaptureName, CapturedValue, ChildDelimitedShape, ChildPattern,
+    ChildPatternElement, DelimitedShape, MacroCandidate, MacroConflict, MacroDelimiter, MacroError,
+    MacroMatch, MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern, PatternElement,
+    PositionPredicate, SigilPosition, SigilSpec,
 };
 pub use nota_next_derive::{NotaDecode, NotaEncode};
 pub use parser::{

@@ -47,7 +47,9 @@ vocabulary and declaration semantics layered above those value shapes.*
 the root type, NOTA should expose the ordered root objects as that type's body
 instead of requiring an outer wrapper object. `NotaDocumentBody` and
 `NotaDocumentEncoding` own that parse/format boundary so higher layers do not
-hand-join field strings.*
+hand-join field strings. The `#[nota(known_root)]` derive attribute makes this
+the normal code path for typed Rust nouns that read a whole file as the known
+root body.*
 
 *The shared NOTA codec includes derive macros for generated and hand-written
 Rust nouns. Schema-generated Rust should derive `NotaDecode` and `NotaEncode`
@@ -62,7 +64,10 @@ the same NOTA data.*
 pattern data, named capture extraction, registry dispatch, conflict detection,
 and rich no-match diagnostics. Consumers such as schema-next own the vocabulary
 they register and the semantic lowering they perform from the returned macro
-match.*
+match. Delimited macro patterns can also constrain their immediate children by
+delimiter, object count, atom case, literal, or rest capture, so consumers can
+express structural matches before semantic lowering without falling back to text
+macros.*
 
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.

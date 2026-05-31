@@ -89,6 +89,17 @@ pub trait NotaDocumentEncode {
     fn to_nota_document_body(&self) -> NotaDocumentEncoding;
 }
 
+pub trait NotaNamedDocumentFieldDecode: Sized {
+    fn from_nota_named_document_field(
+        name: &'static str,
+        block: &Block,
+    ) -> Result<Self, NotaDecodeError>;
+}
+
+pub trait NotaNamedDocumentFieldEncode {
+    fn to_nota_named_document_field_body(&self) -> String;
+}
+
 pub struct NotaSource<'source> {
     source: &'source str,
 }

@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use nota_next::{NotaDecode, NotaEncode, NotaSource};
+use nota_next::{
+    Block, NotaDecode, NotaDecodeError, NotaDocumentEncode, NotaEncode,
+    NotaNamedDocumentFieldDecode, NotaNamedDocumentFieldEncode, NotaSource,
+};
 
 #[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, Ord, PartialEq, PartialOrd)]
 struct Topic(String);
@@ -22,6 +25,39 @@ enum Request {
 #[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
 struct TopicMap {
     entries: BTreeMap<Topic, Entry>,
+}
+
+#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+struct NamedVariants {
+    name: String,
+    variants: Vec<String>,
+}
+
+impl NotaNamedDocumentFieldDecode for NamedVariants {
+    fn from_nota_named_document_field(
+        name: &'static str,
+        block: &Block,
+    ) -> Result<Self, NotaDecodeError> {
+        Ok(Self {
+            name: name.to_owned(),
+            variants: Vec::<String>::from_nota_block(block)?,
+        })
+    }
+}
+
+impl NotaNamedDocumentFieldEncode for NamedVariants {
+    fn to_nota_named_document_field_body(&self) -> String {
+        self.variants.to_nota()
+    }
+}
+
+#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+#[nota(known_root)]
+struct KnownRootDocument {
+    name: String,
+    imports: Vec<String>,
+    #[nota(name = "Input")]
+    input: NamedVariants,
 }
 
 #[test]
@@ -66,5 +102,21 @@ fn derive_uses_shared_collection_codec() {
     assert_eq!(
         entries.to_nota(),
         "({[alpha] ([alpha] [first] 1) [beta] ([beta] [second] 2)})"
+    );
+}
+
+#[test]
+fn derive_reads_and_writes_known_root_document_bodies() {
+    let source = NotaSource::new("[schema]\n[]\n[[Record] [Observe]]");
+    let document = source
+        .parse_document_body::<KnownRootDocument>()
+        .expect("known-root body decodes");
+
+    assert_eq!(document.name, "schema");
+    assert_eq!(document.input.name, "Input");
+    assert_eq!(document.input.variants, ["Record", "Observe"]);
+    assert_eq!(
+        document.to_nota_document_body().to_nota(),
+        "[schema]\n[]\n[[Record] [Observe]]"
     );
 }

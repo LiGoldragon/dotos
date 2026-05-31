@@ -4,17 +4,17 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStreamTwo;
 use quote::{format_ident, quote};
 use syn::{
-    Data, DataEnum, DataStruct, DeriveInput, Error, Field, Fields, GenericParam, Generics, Ident,
-    Index, Variant, parse_macro_input,
+    Attribute, Data, DataEnum, DataStruct, DeriveInput, Error, Field, Fields, GenericParam,
+    Generics, Ident, Index, LitStr, Variant, parse_macro_input,
 };
 
-#[proc_macro_derive(NotaDecode)]
+#[proc_macro_derive(NotaDecode, attributes(nota))]
 pub fn derive_nota_decode(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     CodecDerive::new(input).expand_decode().into()
 }
 
-#[proc_macro_derive(NotaEncode)]
+#[proc_macro_derive(NotaEncode, attributes(nota))]
 pub fn derive_nota_encode(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     CodecDerive::new(input).expand_encode().into()
@@ -38,10 +38,14 @@ impl CodecDerive {
     }
 
     fn expand(self, direction: CodecDirection) -> TokenStreamTwo {
+        let attributes = match ContainerNotaAttributes::from_attributes(&self.input.attrs) {
+            Ok(attributes) => attributes,
+            Err(error) => return error.to_compile_error(),
+        };
         let name = self.input.ident;
         match self.input.data {
             Data::Struct(data) => {
-                StructDerive::new(name, self.input.generics, data, direction).expand()
+                StructDerive::new(name, self.input.generics, data, direction, attributes).expand()
             }
             Data::Enum(data) => {
                 EnumDerive::new(name, self.input.generics, data, direction).expand()
@@ -67,20 +71,85 @@ impl CodecDirection {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct ContainerNotaAttributes {
+    known_root: bool,
+}
+
+impl ContainerNotaAttributes {
+    fn from_attributes(attributes: &[Attribute]) -> Result<Self, Error> {
+        let mut output = Self::default();
+        for attribute in attributes {
+            if !attribute.path().is_ident("nota") {
+                continue;
+            }
+            attribute.parse_nested_meta(|meta| {
+                if meta.path.is_ident("known_root") {
+                    output.known_root = true;
+                    return Ok(());
+                }
+                Err(meta.error("unsupported nota container attribute"))
+            })?;
+        }
+        Ok(output)
+    }
+
+    fn known_root(&self) -> bool {
+        self.known_root
+    }
+}
+
+#[derive(Clone, Default)]
+struct FieldNotaAttributes {
+    name: Option<LitStr>,
+}
+
+impl FieldNotaAttributes {
+    fn from_attributes(attributes: &[Attribute]) -> Result<Self, Error> {
+        let mut output = Self::default();
+        for attribute in attributes {
+            if !attribute.path().is_ident("nota") {
+                continue;
+            }
+            attribute.parse_nested_meta(|meta| {
+                if meta.path.is_ident("name") {
+                    let value = meta.value()?;
+                    output.name = Some(value.parse()?);
+                    return Ok(());
+                }
+                Err(meta.error("unsupported nota field attribute"))
+            })?;
+        }
+        Ok(output)
+    }
+
+    fn name(&self) -> Option<&LitStr> {
+        self.name.as_ref()
+    }
+}
+
 struct StructDerive {
     name: Ident,
     generics: Generics,
     data: DataStruct,
     direction: CodecDirection,
+    attributes: ContainerNotaAttributes,
 }
 
 impl StructDerive {
-    fn new(name: Ident, generics: Generics, data: DataStruct, direction: CodecDirection) -> Self {
+    fn new(
+        name: Ident,
+        generics: Generics,
+        data: DataStruct,
+        direction: CodecDirection,
+        attributes: ContainerNotaAttributes,
+    ) -> Self {
         Self {
             name,
             generics,
             data,
             direction,
+            attributes,
         }
     }
 
@@ -99,12 +168,40 @@ impl StructDerive {
         let type_name = name.to_string();
         match self.data.fields {
             Fields::Named(fields) => {
-                let field_count = fields.named.len();
-                let fields = fields
-                    .named
+                let named_fields = fields.named;
+                let field_count = named_fields.len();
+                let block_fields = match named_fields
                     .iter()
                     .enumerate()
-                    .map(|(index, field)| FieldDecode::new(index, field).named());
+                    .map(|(index, field)| FieldDecode::new(index, field).named())
+                    .collect::<Result<Vec<_>, _>>()
+                {
+                    Ok(fields) => fields,
+                    Err(error) => return error.to_compile_error(),
+                };
+                let document_impl = if self.attributes.known_root() {
+                    let document_fields = match named_fields
+                        .iter()
+                        .enumerate()
+                        .map(|(index, field)| FieldDecode::new(index, field).document_named())
+                        .collect::<Result<Vec<_>, _>>()
+                    {
+                        Ok(fields) => fields,
+                        Err(error) => return error.to_compile_error(),
+                    };
+                    quote! {
+                        impl #implementation_generics ::nota_next::NotaDocumentDecode for #name #type_generics #where_clause {
+                            fn from_nota_document_body(body: &::nota_next::NotaDocumentBody<'_>) -> Result<Self, ::nota_next::NotaDecodeError> {
+                                let fields = body.expect_fields(#type_name, #field_count)?;
+                                Ok(Self {
+                                    #(#document_fields,)*
+                                })
+                            }
+                        }
+                    }
+                } else {
+                    quote! {}
+                };
                 quote! {
                     impl #implementation_generics ::nota_next::NotaDecode for #name #type_generics #where_clause {
                         fn from_nota_block(block: &::nota_next::Block) -> Result<Self, ::nota_next::NotaDecodeError> {
@@ -115,10 +212,11 @@ impl StructDerive {
                                 #field_count,
                             )?;
                             Ok(Self {
-                                #(#fields,)*
+                                #(#block_fields,)*
                             })
                         }
                     }
+                    #document_impl
                 }
             }
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
@@ -151,16 +249,46 @@ impl StructDerive {
         let (implementation_generics, type_generics, where_clause) = generics.split_for_impl();
         match self.data.fields {
             Fields::Named(fields) => {
-                let fields = fields.named.iter().map(FieldEncode::named);
+                let named_fields = fields.named;
+                let block_fields = match named_fields
+                    .iter()
+                    .map(FieldEncode::named)
+                    .collect::<Result<Vec<_>, _>>()
+                {
+                    Ok(fields) => fields,
+                    Err(error) => return error.to_compile_error(),
+                };
+                let document_impl = if self.attributes.known_root() {
+                    let document_fields = match named_fields
+                        .iter()
+                        .map(FieldEncode::document_named)
+                        .collect::<Result<Vec<_>, _>>()
+                    {
+                        Ok(fields) => fields,
+                        Err(error) => return error.to_compile_error(),
+                    };
+                    quote! {
+                        impl #implementation_generics ::nota_next::NotaDocumentEncode for #name #type_generics #where_clause {
+                            fn to_nota_document_body(&self) -> ::nota_next::NotaDocumentEncoding {
+                                ::nota_next::NotaDocumentEncoding::new(vec![
+                                    #(#document_fields,)*
+                                ])
+                            }
+                        }
+                    }
+                } else {
+                    quote! {}
+                };
                 quote! {
                     impl #implementation_generics ::nota_next::NotaEncode for #name #type_generics #where_clause {
                         fn to_nota(&self) -> String {
                             let fields = [
-                                #(#fields,)*
+                                #(#block_fields,)*
                             ];
                             format!("({})", fields.join(" "))
                         }
                     }
+                    #document_impl
                 }
             }
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
@@ -196,24 +324,52 @@ impl<'field> FieldDecode<'field> {
         Self { index, field }
     }
 
-    fn named(&self) -> TokenStreamTwo {
+    fn named(&self) -> Result<TokenStreamTwo, Error> {
         let name = self.field.ident.as_ref().expect("named field");
         let field_type = &self.field.ty;
         let index = Index::from(self.index);
-        quote! {
+        Ok(quote! {
             #name: <#field_type as ::nota_next::NotaDecode>::from_nota_block(&children[#index])?
+        })
+    }
+
+    fn document_named(&self) -> Result<TokenStreamTwo, Error> {
+        let name = self.field.ident.as_ref().expect("named field");
+        let field_type = &self.field.ty;
+        let index = Index::from(self.index);
+        let attributes = FieldNotaAttributes::from_attributes(&self.field.attrs)?;
+        if let Some(document_name) = attributes.name() {
+            return Ok(quote! {
+                #name: <#field_type as ::nota_next::NotaNamedDocumentFieldDecode>::from_nota_named_document_field(#document_name, &fields[#index])?
+            });
         }
+        Ok(quote! {
+            #name: <#field_type as ::nota_next::NotaDecode>::from_nota_block(&fields[#index])?
+        })
     }
 }
 
 struct FieldEncode;
 
 impl FieldEncode {
-    fn named(field: &Field) -> TokenStreamTwo {
+    fn named(field: &Field) -> Result<TokenStreamTwo, Error> {
         let name = field.ident.as_ref().expect("named field");
-        quote! {
+        Ok(quote! {
             ::nota_next::NotaEncode::to_nota(&self.#name)
+        })
+    }
+
+    fn document_named(field: &Field) -> Result<TokenStreamTwo, Error> {
+        let name = field.ident.as_ref().expect("named field");
+        let attributes = FieldNotaAttributes::from_attributes(&field.attrs)?;
+        if attributes.name().is_some() {
+            return Ok(quote! {
+                ::nota_next::NotaNamedDocumentFieldEncode::to_nota_named_document_field_body(&self.#name)
+            });
         }
+        Ok(quote! {
+            ::nota_next::NotaEncode::to_nota(&self.#name)
+        })
     }
 }
 

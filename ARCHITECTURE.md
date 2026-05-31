@@ -18,6 +18,9 @@
 - `nota-next-derive` is the proc-macro companion crate re-exported by
   `nota-next`. It derives `NotaDecode` and `NotaEncode` for named structs,
   one-field tuple newtypes, unit enum variants, and one-payload enum variants.
+  The same derives honor `#[nota(known_root)]` on named structs by emitting
+  `NotaDocumentDecode` and `NotaDocumentEncode` implementations over the
+  document body.
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, string formatting, and collection value shapes.
@@ -25,6 +28,10 @@
   helpers. They expose a file's root object stream as the body of the caller's
   known type, and they format the ordered body fields back to NOTA without an
   outer wrapper.
+- `NotaNamedDocumentFieldDecode` and `NotaNamedDocumentFieldEncode` let a
+  known-root field be decoded from a positional body slot while receiving a
+  name supplied by the root shape, for example an `Input` enum whose variants
+  are stored directly in the root body.
 - `Box<T>` is a storage wrapper only. Its codec delegates to `T` so recursive
   Rust data does not create a second NOTA shape.
 - `macros` is the reusable macro-node mechanism. `MacroNodeDefinition`
@@ -32,7 +39,10 @@
   candidate block sequence through ordered definitions, and `MacroMatch`
   returns named captures to the consumer. The mechanism is semantic-neutral:
   schema-next may register struct/enum/newtype patterns, but nota-next only
-  matches atoms, delimiters, literals, and rest captures.
+  matches atoms, delimiters, literals, and rest captures. A delimited pattern
+  can also carry a serializable child pattern over that block's immediate
+  children, giving consumers nested structural constraints without recursive
+  text-template logic.
 
 ## At-Binding Syntax
 
@@ -82,4 +92,6 @@ the single-root-object path for ordinary values. `NotaSource::parse_document_bod
 is the file/body path for callers that already know the root type from context,
 such as a `.schema` or `.asschema` reader. In that mode the document itself is
 the outer product; the caller's `NotaDocumentDecode` implementation assigns the
-root objects to typed fields.
+root objects to typed fields. For ordinary structs this implementation should
+come from `#[nota(known_root)]`, not from ad hoc string joins or hand-written
+per-root field readers.
