@@ -256,7 +256,7 @@ impl StructDerive {
                 let named_fields = fields.named;
                 let body_fields = match named_fields
                     .iter()
-                    .map(FieldEncode::body_named)
+                    .map(|field| FieldEncode::new(field).body_named())
                     .collect::<Result<Vec<_>, _>>()
                 {
                     Ok(fields) => fields,
@@ -339,12 +339,18 @@ impl<'field> FieldDecode<'field> {
     }
 }
 
-struct FieldEncode;
+struct FieldEncode<'field> {
+    field: &'field Field,
+}
 
-impl FieldEncode {
-    fn body_named(field: &Field) -> Result<TokenStreamTwo, Error> {
-        let name = field.ident.as_ref().expect("named field");
-        let attributes = FieldNotaAttributes::from_attributes(&field.attrs)?;
+impl<'field> FieldEncode<'field> {
+    fn new(field: &'field Field) -> Self {
+        Self { field }
+    }
+
+    fn body_named(&self) -> Result<TokenStreamTwo, Error> {
+        let name = self.field.ident.as_ref().expect("named field");
+        let attributes = FieldNotaAttributes::from_attributes(&self.field.attrs)?;
         if attributes.name().is_some() {
             return Ok(quote! {
                 ::nota_next::NotaNamedBodyFieldEncode::to_nota_named_body_field(&self.#name)
