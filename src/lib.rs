@@ -21,7 +21,8 @@ pub use codec::{
 pub use macros::{
     AtomCase, AtomShape, CaptureName, CapturedValue, DelimitedShape, MacroCandidate, MacroConflict,
     MacroDelimiter, MacroError, MacroMatch, MacroNodeDefinition, MacroObjectCount, MacroRegistry,
-    Pattern, PatternElement, PositionPredicate, SigilPosition, SigilSpec,
+    Pattern, PatternElement, PositionPredicate, SigilPosition, SigilSpec, StructuralMacroError,
+    StructuralMacroNode,
 };
 pub use nota_next_derive::{NotaDecode, NotaEncode};
 pub use parser::{

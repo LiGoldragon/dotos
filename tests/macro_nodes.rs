@@ -1,8 +1,9 @@
 use nota_next::{
-    AtomShape, CaptureName, DelimitedShape, Document, MacroCandidate, MacroDelimiter,
+    AtomShape, CaptureName, DelimitedShape, Document, MacroCandidate, MacroDelimiter, MacroMatch,
     MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern, PatternElement,
-    PositionPredicate,
+    PositionPredicate, StructuralMacroNode,
 };
+use std::fmt;
 
 #[test]
 fn dispatches_structural_namespace_pair_with_named_captures() {
@@ -239,3 +240,176 @@ fn reports_expected_shapes_when_no_macro_matches() {
     assert!(rendered.contains("StructDeclaration"));
     assert!(rendered.contains("symbol key followed by brace value"));
 }
+
+#[test]
+fn structural_macro_node_selects_first_matching_variant_in_order() {
+    let document = Document::parse("Reserved").expect("fixture parses");
+    let block = document.root_object_at(0).expect("fixture has root");
+
+    let decoded = ExampleStructuralVariant::from_structural_block(block)
+        .expect("reserved literal wins before generic PascalCase");
+
+    assert_eq!(decoded, ExampleStructuralVariant::Reserved);
+    assert_eq!(decoded.to_structural_nota(), "Reserved");
+}
+
+#[test]
+fn structural_macro_node_decodes_and_encodes_data_variant() {
+    let document = Document::parse("(Record Entry)").expect("fixture parses");
+    let block = document.root_object_at(0).expect("fixture has root");
+
+    let decoded =
+        ExampleStructuralVariant::from_structural_block(block).expect("data variant decodes");
+
+    assert_eq!(
+        decoded,
+        ExampleStructuralVariant::Data {
+            variant_name: "Record".to_owned(),
+            payload_name: "Entry".to_owned(),
+        }
+    );
+    assert_eq!(decoded.to_structural_nota(), "(Record Entry)");
+
+    let encoded_document = Document::parse(decoded.to_structural_nota()).expect("encoded parses");
+    let encoded_block = encoded_document
+        .root_object_at(0)
+        .expect("encoded fixture has root");
+    assert_eq!(
+        ExampleStructuralVariant::from_structural_block(encoded_block)
+            .expect("encoded structural node decodes"),
+        decoded
+    );
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ExampleStructuralVariant {
+    Reserved,
+    Unit {
+        variant_name: String,
+    },
+    Data {
+        variant_name: String,
+        payload_name: String,
+    },
+}
+
+impl StructuralMacroNode for ExampleStructuralVariant {
+    type Error = ExampleStructuralVariantError;
+
+    fn structural_position() -> PositionPredicate {
+        PositionPredicate::named("ExampleVariant")
+    }
+
+    fn structural_variants() -> Vec<MacroNodeDefinition> {
+        vec![
+            MacroNodeDefinition::new(
+                "reserved literal variant",
+                Self::structural_position(),
+                Pattern::new(vec![PatternElement::literal("Reserved")]),
+                "literal Reserved variant",
+            ),
+            MacroNodeDefinition::new(
+                "unit variant",
+                Self::structural_position(),
+                Pattern::new(vec![PatternElement::atom(AtomShape::pascal_case(Some(
+                    CaptureName::new("variant_name"),
+                )))]),
+                "PascalCase variant atom",
+            ),
+            MacroNodeDefinition::new(
+                "data variant",
+                Self::structural_position(),
+                Pattern::new(vec![PatternElement::delimited(
+                    DelimitedShape::new(
+                        MacroDelimiter::Parenthesis,
+                        MacroObjectCount::Exact(2),
+                        Some(CaptureName::new("variant_signature")),
+                    )
+                    .with_children(Pattern::new(vec![
+                        PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
+                            "variant_name",
+                        )))),
+                        PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
+                            "payload_name",
+                        )))),
+                    ])),
+                )]),
+                "parenthesized variant name plus payload name",
+            ),
+        ]
+    }
+
+    fn from_structural_match(matched: MacroMatch<'_>) -> Result<Self, Self::Error> {
+        match matched.macro_name() {
+            "reserved literal variant" => Ok(Self::Reserved),
+            "unit variant" => {
+                let variant_name =
+                    ExampleStructuralVariantMatch::new(&matched).captured_text("variant_name")?;
+                Ok(Self::Unit { variant_name })
+            }
+            "data variant" => {
+                let structural_match = ExampleStructuralVariantMatch::new(&matched);
+                Ok(Self::Data {
+                    variant_name: structural_match.captured_text("variant_name")?,
+                    payload_name: structural_match.captured_text("payload_name")?,
+                })
+            }
+            other => Err(ExampleStructuralVariantError::UnexpectedVariant(
+                other.to_owned(),
+            )),
+        }
+    }
+
+    fn to_structural_nota(&self) -> String {
+        match self {
+            Self::Reserved => "Reserved".to_owned(),
+            Self::Unit { variant_name } => variant_name.clone(),
+            Self::Data {
+                variant_name,
+                payload_name,
+            } => format!("({variant_name} {payload_name})"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ExampleStructuralVariantMatch<'match_value, 'block> {
+    matched: &'match_value MacroMatch<'block>,
+}
+
+impl<'match_value, 'block> ExampleStructuralVariantMatch<'match_value, 'block> {
+    fn new(matched: &'match_value MacroMatch<'block>) -> Self {
+        Self { matched }
+    }
+
+    fn captured_text(
+        &self,
+        capture_name: &'static str,
+    ) -> Result<String, ExampleStructuralVariantError> {
+        let name = CaptureName::new(capture_name);
+        self.matched
+            .block_capture(&name)
+            .and_then(|block| block.demote_to_string())
+            .map(str::to_owned)
+            .ok_or(ExampleStructuralVariantError::MissingCapture(capture_name))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ExampleStructuralVariantError {
+    MissingCapture(&'static str),
+    UnexpectedVariant(String),
+}
+
+impl fmt::Display for ExampleStructuralVariantError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingCapture(name) => write!(formatter, "missing capture {name}"),
+            Self::UnexpectedVariant(name) => {
+                write!(formatter, "unexpected structural variant {name}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ExampleStructuralVariantError {}

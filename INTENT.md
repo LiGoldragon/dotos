@@ -75,5 +75,13 @@ delimiter, object count, atom case, literal, or rest capture, so consumers can
 express structural matches before semantic lowering without falling back to text
 macros.*
 
+*A typed structural macro node is the enum-shaped consumer of that mechanism.
+The consumer lists structural variants in source order, NOTA tries the
+corresponding structural patterns in that order, and only after a structural
+match is selected does the consumer decode the captures into domain data. The
+same consumer type must encode back to the structural NOTA surface, so schema
+sugar and other dialects remain specialized NOTA rather than one-way lowering
+languages.*
+
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.

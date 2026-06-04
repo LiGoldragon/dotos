@@ -685,6 +685,18 @@ impl<'block> MacroMatch<'block> {
     pub fn captures(&self) -> &MacroCaptures<'block> {
         &self.captures
     }
+
+    pub fn capture(&self, name: &CaptureName) -> Option<&CapturedValue<'block>> {
+        self.captures.get(name)
+    }
+
+    pub fn block_capture(&self, name: &CaptureName) -> Option<&'block Block> {
+        self.capture(name).and_then(CapturedValue::block)
+    }
+
+    pub fn body_capture(&self, name: &CaptureName) -> Option<&NotaBody<'block>> {
+        self.capture(name).and_then(CapturedValue::body)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -809,3 +821,67 @@ impl fmt::Display for MacroError {
 }
 
 impl std::error::Error for MacroError {}
+
+pub trait StructuralMacroNode: Sized {
+    type Error;
+
+    fn structural_position() -> PositionPredicate;
+
+    fn structural_variants() -> Vec<MacroNodeDefinition>;
+
+    fn from_structural_match(matched: MacroMatch<'_>) -> Result<Self, Self::Error>;
+
+    fn to_structural_nota(&self) -> String;
+
+    fn from_structural_block(block: &Block) -> Result<Self, StructuralMacroError<Self::Error>> {
+        Self::from_structural_candidate(MacroCandidate::from_block(
+            Self::structural_position(),
+            block,
+        ))
+    }
+
+    fn from_structural_pair(
+        key: &Block,
+        value: &Block,
+    ) -> Result<Self, StructuralMacroError<Self::Error>> {
+        Self::from_structural_candidate(MacroCandidate::from_pair(
+            Self::structural_position(),
+            key,
+            value,
+        ))
+    }
+
+    fn from_structural_candidate(
+        candidate: MacroCandidate<'_>,
+    ) -> Result<Self, StructuralMacroError<Self::Error>> {
+        let registry = MacroRegistry::new(Self::structural_variants())
+            .map_err(StructuralMacroError::Dispatch)?;
+        let matched = registry
+            .dispatch(&candidate)
+            .map_err(StructuralMacroError::Dispatch)?;
+        Self::from_structural_match(matched).map_err(StructuralMacroError::MatchedNode)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum StructuralMacroError<NodeError> {
+    Dispatch(MacroError),
+    MatchedNode(NodeError),
+}
+
+impl<NodeError> fmt::Display for StructuralMacroError<NodeError>
+where
+    NodeError: fmt::Display,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dispatch(error) => write!(formatter, "{error}"),
+            Self::MatchedNode(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
+impl<NodeError> std::error::Error for StructuralMacroError<NodeError> where
+    NodeError: std::error::Error + 'static
+{
+}
