@@ -180,6 +180,128 @@ impl MacroNodeDefinition {
     Eq,
     PartialEq,
 )]
+#[rkyv(
+    bytecheck(bounds(
+        __C: rkyv::validation::ArchiveContext,
+        __C::Error: rkyv::rancor::Source
+    )),
+    serialize_bounds(
+        __S: rkyv::ser::Writer + rkyv::ser::Allocator,
+        __S::Error: rkyv::rancor::Source
+    ),
+    deserialize_bounds(__D::Error: rkyv::rancor::Source)
+)]
+pub enum BlockShape {
+    Any(Option<CaptureName>),
+    Atom(AtomShape),
+    Delimited(DelimitedShape),
+    Literal(String),
+}
+
+impl BlockShape {
+    pub fn any(capture: impl Into<Option<CaptureName>>) -> Self {
+        Self::Any(capture.into())
+    }
+
+    pub fn atom(
+        case: Option<AtomCase>,
+        sigil: Option<SigilSpec>,
+        capture: impl Into<Option<CaptureName>>,
+    ) -> Self {
+        Self::Atom(AtomShape::new(case, sigil, capture.into()))
+    }
+
+    pub fn symbol(capture: impl Into<Option<CaptureName>>) -> Self {
+        Self::atom(Some(AtomCase::Symbol), None, capture)
+    }
+
+    pub fn pascal_atom(capture: impl Into<Option<CaptureName>>) -> Self {
+        Self::atom(Some(AtomCase::PascalCase), None, capture)
+    }
+
+    pub fn camel_atom(capture: impl Into<Option<CaptureName>>) -> Self {
+        Self::atom(Some(AtomCase::CamelCase), None, capture)
+    }
+
+    pub fn literal(value: impl Into<String>) -> Self {
+        Self::Literal(value.into())
+    }
+
+    pub fn delimited(
+        delimiter: MacroDelimiter,
+        object_count: MacroObjectCount,
+        capture: impl Into<Option<CaptureName>>,
+    ) -> Self {
+        Self::Delimited(DelimitedShape::new(delimiter, object_count, capture.into()))
+    }
+
+    pub fn headed_parenthesis(
+        head: impl Into<String>,
+        object_count: MacroObjectCount,
+        capture: impl Into<Option<CaptureName>>,
+    ) -> Self {
+        Self::delimited(MacroDelimiter::Parenthesis, object_count, capture).with_children(
+            Pattern::new(vec![
+                PatternElement::literal(head),
+                PatternElement::rest(CaptureName::new("arguments")),
+            ]),
+        )
+    }
+
+    pub fn pascal_headed_parenthesis(
+        object_count: MacroObjectCount,
+        head_capture: CaptureName,
+        body_capture: impl Into<Option<CaptureName>>,
+    ) -> Self {
+        Self::delimited(MacroDelimiter::Parenthesis, object_count, body_capture).with_children(
+            Pattern::new(vec![
+                PatternElement::atom(AtomShape::pascal_case(Some(head_capture))),
+                PatternElement::rest(CaptureName::new("arguments")),
+            ]),
+        )
+    }
+
+    pub fn with_children(self, children: Pattern) -> Self {
+        match self {
+            Self::Delimited(shape) => Self::Delimited(shape.with_children(children)),
+            other => other,
+        }
+    }
+
+    pub fn into_pattern_element(self) -> PatternElement {
+        match self {
+            Self::Any(capture) => PatternElement::any(capture),
+            Self::Atom(shape) => PatternElement::atom(shape),
+            Self::Delimited(shape) => PatternElement::delimited(shape),
+            Self::Literal(value) => PatternElement::literal(value),
+        }
+    }
+
+    pub fn into_pattern(self) -> Pattern {
+        Pattern::new(vec![self.into_pattern_element()])
+    }
+
+    pub fn into_macro_node(
+        self,
+        name: impl Into<String>,
+        position: PositionPredicate,
+        expected: impl Into<String>,
+    ) -> MacroNodeDefinition {
+        MacroNodeDefinition::new(name, position, self.into_pattern(), expected)
+    }
+}
+
+#[derive(
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    nota_next::NotaDecode,
+    nota_next::NotaEncode,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+)]
 pub struct Pattern {
     elements: Vec<PatternElement>,
 }

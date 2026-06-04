@@ -1,6 +1,6 @@
 use nota_next::{
-    AtomShape, CaptureName, DelimitedShape, Document, MacroCandidate, MacroDelimiter, MacroMatch,
-    MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern, PatternElement,
+    AtomShape, BlockShape, CaptureName, DelimitedShape, Document, MacroCandidate, MacroDelimiter,
+    MacroMatch, MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern, PatternElement,
     PositionPredicate, StructuralMacroNode,
 };
 use std::fmt;
@@ -254,6 +254,69 @@ fn structural_macro_node_selects_first_matching_variant_in_order() {
 }
 
 #[test]
+fn structural_block_shape_order_controls_specific_head_shadowing() {
+    let document = Document::parse("(Optional Integer)").expect("fixture parses");
+    let block = document.root_object_at(0).expect("fixture has root");
+    let position = PositionPredicate::named("TypeReference");
+
+    let specific_first = MacroRegistry::new(vec![
+        BlockShape::headed_parenthesis(
+            "Optional",
+            MacroObjectCount::Exact(2),
+            Some(CaptureName::new("signature")),
+        )
+        .into_macro_node(
+            "optional reference",
+            position.clone(),
+            "Optional head carrying one reference",
+        ),
+        BlockShape::pascal_headed_parenthesis(
+            MacroObjectCount::Exact(2),
+            CaptureName::new("constructor"),
+            Some(CaptureName::new("signature")),
+        )
+        .into_macro_node(
+            "application reference",
+            position.clone(),
+            "PascalCase head carrying one reference",
+        ),
+    ])
+    .expect("registry has no conflicts");
+    let matched_specific = specific_first
+        .dispatch(&MacroCandidate::from_block(position.clone(), block))
+        .expect("specific-first registry matches");
+    assert_eq!(matched_specific.macro_name(), "optional reference");
+
+    let general_first = MacroRegistry::new(vec![
+        BlockShape::pascal_headed_parenthesis(
+            MacroObjectCount::Exact(2),
+            CaptureName::new("constructor"),
+            Some(CaptureName::new("signature")),
+        )
+        .into_macro_node(
+            "application reference",
+            position.clone(),
+            "PascalCase head carrying one reference",
+        ),
+        BlockShape::headed_parenthesis(
+            "Optional",
+            MacroObjectCount::Exact(2),
+            Some(CaptureName::new("signature")),
+        )
+        .into_macro_node(
+            "optional reference",
+            position.clone(),
+            "Optional head carrying one reference",
+        ),
+    ])
+    .expect("registry has no conflicts");
+    let matched_general = general_first
+        .dispatch(&MacroCandidate::from_block(position, block))
+        .expect("general-first registry matches");
+    assert_eq!(matched_general.macro_name(), "application reference");
+}
+
+#[test]
 fn structural_macro_node_decodes_and_encodes_data_variant() {
     let document = Document::parse("(Record Entry)").expect("fixture parses");
     let block = document.root_object_at(0).expect("fixture has root");
@@ -302,38 +365,32 @@ impl StructuralMacroNode for ExampleStructuralVariant {
 
     fn structural_variants() -> Vec<MacroNodeDefinition> {
         vec![
-            MacroNodeDefinition::new(
+            BlockShape::literal("Reserved").into_macro_node(
                 "reserved literal variant",
                 Self::structural_position(),
-                Pattern::new(vec![PatternElement::literal("Reserved")]),
                 "literal Reserved variant",
             ),
-            MacroNodeDefinition::new(
+            BlockShape::pascal_atom(Some(CaptureName::new("variant_name"))).into_macro_node(
                 "unit variant",
                 Self::structural_position(),
-                Pattern::new(vec![PatternElement::atom(AtomShape::pascal_case(Some(
-                    CaptureName::new("variant_name"),
-                )))]),
                 "PascalCase variant atom",
             ),
-            MacroNodeDefinition::new(
+            BlockShape::delimited(
+                MacroDelimiter::Parenthesis,
+                MacroObjectCount::Exact(2),
+                Some(CaptureName::new("variant_signature")),
+            )
+            .with_children(Pattern::new(vec![
+                PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
+                    "variant_name",
+                )))),
+                PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
+                    "payload_name",
+                )))),
+            ]))
+            .into_macro_node(
                 "data variant",
                 Self::structural_position(),
-                Pattern::new(vec![PatternElement::delimited(
-                    DelimitedShape::new(
-                        MacroDelimiter::Parenthesis,
-                        MacroObjectCount::Exact(2),
-                        Some(CaptureName::new("variant_signature")),
-                    )
-                    .with_children(Pattern::new(vec![
-                        PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
-                            "variant_name",
-                        )))),
-                        PatternElement::atom(AtomShape::pascal_case(Some(CaptureName::new(
-                            "payload_name",
-                        )))),
-                    ])),
-                )]),
                 "parenthesized variant name plus payload name",
             ),
         ]

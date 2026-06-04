@@ -83,5 +83,12 @@ same consumer type must encode back to the structural NOTA surface, so schema
 sugar and other dialects remain specialized NOTA rather than one-way lowering
 languages.*
 
+*The authored API for those structural variants should speak in per-variant
+shape vocabulary, not raw matcher plumbing. `BlockShape` is that vocabulary on
+main: it names common structural cases such as Pascal atoms and headed
+parentheses while lowering to the existing `Pattern` / `MacroNodeDefinition`
+substrate. This accepts the clearer design noun without creating a second
+structural matcher.*
+
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.

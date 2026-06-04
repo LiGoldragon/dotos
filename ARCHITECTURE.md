@@ -54,6 +54,12 @@
   can carry a recursive `Pattern` over that block's children, giving consumers
   arbitrarily nested structural constraints without recursive text-template
   logic.
+- `BlockShape` is the ergonomic per-variant structural description layered on
+  top of `Pattern`. It gives structural macro authors names such as
+  Pascal-case atom, headed parenthesis, Pascal-headed parenthesis, literal, and
+  delimited block, then lowers those shapes into `Pattern` /
+  `MacroNodeDefinition`. This keeps one matcher while making a future derive
+  macro's variant attributes readable.
 - `StructuralMacroNode` is the typed enum bridge on top of the same mechanism.
   A consumer-provided type lists its structural variants in order, decodes from
   the selected `MacroMatch`, and encodes back to the structural NOTA surface.
