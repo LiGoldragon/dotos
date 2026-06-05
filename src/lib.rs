@@ -22,10 +22,10 @@ pub use macros::{
     AtomCase, AtomShape, BlockShape, CaptureName, CapturedValue, DelimitedShape, MacroCandidate,
     MacroConflict, MacroDelimiter, MacroError, MacroMatch, MacroNodeDefinition, MacroObjectCount,
     MacroRegistry, Pattern, PatternElement, PositionPredicate, SigilPosition, SigilSpec,
-    StructuralMacroError, StructuralMacroNode, StructuralVariant, StructuralVariantConflict,
-    StructuralVariantError, StructuralVariantSet,
+    StructuralMacroError, StructuralMacroNode, StructuralMacroNodeError, StructuralVariant,
+    StructuralVariantConflict, StructuralVariantError, StructuralVariantSet,
 };
-pub use nota_next_derive::{NotaDecode, NotaEncode};
+pub use nota_next_derive::{NotaDecode, NotaEncode, StructuralMacroNode};
 pub use parser::{
     Atom, AtomClassification, Block, Delimiter, Document, NotaError, PipeText, SourcePosition,
     SourceSpan, StructureHeader, StructureShape, StructureSlot,

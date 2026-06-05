@@ -1153,6 +1153,17 @@ pub trait StructuralMacroNode: Sized {
 
     fn to_structural_nota(&self) -> String;
 
+    fn from_structural_nota(source: &str) -> Result<Self, StructuralMacroError<Self::Error>> {
+        let document =
+            crate::Document::parse(source).map_err(|error| StructuralMacroError::Parse {
+                error: error.to_string(),
+            })?;
+        match document.root_objects() {
+            [single] => Self::from_structural_block(single),
+            many => Err(StructuralMacroError::ExpectedSingleRoot { found: many.len() }),
+        }
+    }
+
     fn from_structural_block(block: &Block) -> Result<Self, StructuralMacroError<Self::Error>> {
         Self::from_structural_candidate(MacroCandidate::from_block(
             Self::structural_position(),
@@ -1184,8 +1195,100 @@ pub trait StructuralMacroNode: Sized {
     }
 }
 
+impl<Inner> StructuralMacroNode for Box<Inner>
+where
+    Inner: StructuralMacroNode,
+{
+    type Error = Inner::Error;
+
+    fn structural_position() -> PositionPredicate {
+        Inner::structural_position()
+    }
+
+    fn structural_variants() -> Vec<StructuralVariant> {
+        Inner::structural_variants()
+    }
+
+    fn from_structural_match(matched: MacroMatch<'_>) -> Result<Self, Self::Error> {
+        Ok(Box::new(Inner::from_structural_match(matched)?))
+    }
+
+    fn to_structural_nota(&self) -> String {
+        self.as_ref().to_structural_nota()
+    }
+
+    fn from_structural_block(block: &Block) -> Result<Self, StructuralMacroError<Self::Error>> {
+        Ok(Box::new(Inner::from_structural_block(block)?))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum StructuralMacroNodeError {
+    MissingCapture {
+        node: &'static str,
+        variant: &'static str,
+        capture: &'static str,
+    },
+    MissingSlot {
+        node: &'static str,
+        variant: &'static str,
+        capture: &'static str,
+        slot: usize,
+    },
+    Field {
+        node: &'static str,
+        variant: &'static str,
+        field: usize,
+        error: String,
+    },
+    UnexpectedVariant {
+        node: &'static str,
+        variant: String,
+    },
+}
+
+impl fmt::Display for StructuralMacroNodeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingCapture {
+                node,
+                variant,
+                capture,
+            } => write!(
+                formatter,
+                "{node}::{variant} is missing structural capture {capture}"
+            ),
+            Self::MissingSlot {
+                node,
+                variant,
+                capture,
+                slot,
+            } => write!(
+                formatter,
+                "{node}::{variant} capture {capture} is missing slot {slot}"
+            ),
+            Self::Field {
+                node,
+                variant,
+                field,
+                error,
+            } => write!(
+                formatter,
+                "{node}::{variant} failed to decode field {field}: {error}"
+            ),
+            Self::UnexpectedVariant { node, variant } => {
+                write!(formatter, "{node} matched unexpected variant {variant}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for StructuralMacroNodeError {}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StructuralMacroError<NodeError> {
+    Parse { error: String },
+    ExpectedSingleRoot { found: usize },
     Dispatch(StructuralVariantError),
     MatchedNode(NodeError),
 }
@@ -1196,6 +1299,13 @@ where
 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Parse { error } => write!(formatter, "{error}"),
+            Self::ExpectedSingleRoot { found } => {
+                write!(
+                    formatter,
+                    "expected exactly one NOTA root object, found {found}"
+                )
+            }
             Self::Dispatch(error) => write!(formatter, "{error}"),
             Self::MatchedNode(error) => write!(formatter, "{error}"),
         }

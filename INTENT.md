@@ -94,5 +94,13 @@ parentheses while lowering to the existing `Pattern` substrate.
 the enum supplies variants, the type supplies the position, and the codec path
 selects a variant without exposing a registry as the design surface.*
 
+*The enum type is also the derive surface. `#[derive(StructuralMacroNode)]`
+reads per-variant `#[shape(...)]` attributes such as `pascal_atom`,
+`head = "Optional", arity = 2`, and `pascal_head, arity = 2`; the generated
+implementation lists those variants in declaration order, decodes matched
+captures into the enum payload fields recursively, and writes the same
+structural NOTA surface back out. The derive makes the macro-node type itself
+the specification rather than making users hand-write a parser or registry.*
+
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.

@@ -1,7 +1,8 @@
 use nota_next::{
     AtomShape, BlockShape, CaptureName, DelimitedShape, Document, MacroCandidate, MacroDelimiter,
     MacroMatch, MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern, PatternElement,
-    PositionPredicate, StructuralMacroNode, StructuralVariant, StructuralVariantSet,
+    PositionPredicate, StructuralMacroNode, StructuralMacroNodeError, StructuralVariant,
+    StructuralVariantSet,
 };
 use std::fmt;
 
@@ -340,6 +341,31 @@ fn structural_macro_node_decodes_and_encodes_data_variant() {
     );
 }
 
+#[test]
+fn structural_macro_node_derive_uses_enum_variant_order() {
+    let input = "(Optional Integer)";
+    let decoded = DerivedReference::from_structural_nota(input).expect("derived node decodes");
+    let shadowed =
+        MisorderedDerivedReference::from_structural_nota(input).expect("misordered node decodes");
+
+    assert_eq!(
+        decoded,
+        DerivedReference::Optional(Box::new(DerivedReference::Named(DerivedTypeName(
+            "Integer".to_owned()
+        ))))
+    );
+    assert_eq!(decoded.to_structural_nota(), input);
+    assert_eq!(
+        shadowed,
+        MisorderedDerivedReference::Application(
+            DerivedTypeName("Optional".to_owned()),
+            Box::new(MisorderedDerivedReference::Named(DerivedTypeName(
+                "Integer".to_owned()
+            )))
+        )
+    );
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ExampleStructuralVariant {
     Reserved,
@@ -459,3 +485,63 @@ impl fmt::Display for ExampleStructuralVariantError {
 }
 
 impl std::error::Error for ExampleStructuralVariantError {}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DerivedTypeName(String);
+
+impl StructuralMacroNode for DerivedTypeName {
+    type Error = StructuralMacroNodeError;
+
+    fn structural_position() -> PositionPredicate {
+        PositionPredicate::named("DerivedTypeName")
+    }
+
+    fn structural_variants() -> Vec<StructuralVariant> {
+        vec![
+            BlockShape::pascal_atom(Some(CaptureName::new("field_0")))
+                .into_structural_variant("DerivedTypeName", "PascalCase type name"),
+        ]
+    }
+
+    fn from_structural_match(matched: MacroMatch<'_>) -> Result<Self, Self::Error> {
+        let block = matched.block_capture(&CaptureName::new("field_0")).ok_or(
+            StructuralMacroNodeError::MissingCapture {
+                node: "DerivedTypeName",
+                variant: "DerivedTypeName",
+                capture: "field_0",
+            },
+        )?;
+        let Some(text) = block.demote_to_string() else {
+            return Err(StructuralMacroNodeError::MissingCapture {
+                node: "DerivedTypeName",
+                variant: "DerivedTypeName",
+                capture: "field_0",
+            });
+        };
+        Ok(Self(text.to_owned()))
+    }
+
+    fn to_structural_nota(&self) -> String {
+        self.0.clone()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum DerivedReference {
+    #[shape(pascal_atom)]
+    Named(DerivedTypeName),
+    #[shape(head = "Optional", arity = 2)]
+    Optional(Box<DerivedReference>),
+    #[shape(pascal_head, arity = 2)]
+    Application(DerivedTypeName, Box<DerivedReference>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum MisorderedDerivedReference {
+    #[shape(pascal_atom)]
+    Named(DerivedTypeName),
+    #[shape(pascal_head, arity = 2)]
+    Application(DerivedTypeName, Box<MisorderedDerivedReference>),
+    #[shape(head = "Optional", arity = 2)]
+    Optional(Box<MisorderedDerivedReference>),
+}

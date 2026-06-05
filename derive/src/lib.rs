@@ -5,7 +5,7 @@ use proc_macro2::TokenStream as TokenStreamTwo;
 use quote::{format_ident, quote};
 use syn::{
     Attribute, Data, DataEnum, DataStruct, DeriveInput, Error, Field, Fields, GenericParam,
-    Generics, Ident, Index, LitStr, Variant, parse_macro_input,
+    Generics, Ident, Index, LitInt, LitStr, Variant, parse_macro_input,
 };
 
 #[proc_macro_derive(NotaDecode, attributes(nota))]
@@ -18,6 +18,12 @@ pub fn derive_nota_decode(input: TokenStream) -> TokenStream {
 pub fn derive_nota_encode(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     CodecDerive::new(input).expand_encode().into()
+}
+
+#[proc_macro_derive(StructuralMacroNode, attributes(shape))]
+pub fn derive_structural_macro_node(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    StructuralDerive::new(input).expand().into()
 }
 
 struct CodecDerive {
@@ -634,4 +640,385 @@ impl GenericsWithCodecBound {
         }
         self.generics
     }
+}
+
+struct StructuralDerive {
+    input: DeriveInput,
+}
+
+impl StructuralDerive {
+    fn new(input: DeriveInput) -> Self {
+        Self { input }
+    }
+
+    fn expand(self) -> TokenStreamTwo {
+        let DeriveInput {
+            ident: name,
+            generics,
+            data,
+            ..
+        } = self.input;
+        let node_name = name.to_string();
+        let data = match data {
+            Data::Enum(data) => data,
+            Data::Struct(_) | Data::Union(_) => {
+                return Error::new_spanned(&name, "StructuralMacroNode supports enums only")
+                    .to_compile_error();
+            }
+        };
+        let variants = match data
+            .variants
+            .iter()
+            .map(|variant| StructuralVariantDerive::parse(&name, &node_name, variant))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(variants) => variants,
+            Err(error) => return error.to_compile_error(),
+        };
+        let structural_variants = variants.iter().map(StructuralVariantDerive::variant_value);
+        let decode_arms = variants.iter().map(StructuralVariantDerive::decode_arm);
+        let encode_arms = variants.iter().map(StructuralVariantDerive::encode_arm);
+        let (implementation_generics, type_generics, where_clause) = generics.split_for_impl();
+        quote! {
+            impl #implementation_generics ::nota_next::StructuralMacroNode for #name #type_generics #where_clause {
+                type Error = ::nota_next::StructuralMacroNodeError;
+
+                fn structural_position() -> ::nota_next::PositionPredicate {
+                    ::nota_next::PositionPredicate::named(#node_name)
+                }
+
+                fn structural_variants() -> Vec<::nota_next::StructuralVariant> {
+                    vec![
+                        #(#structural_variants,)*
+                    ]
+                }
+
+                fn from_structural_match(matched: ::nota_next::MacroMatch<'_>) -> Result<Self, Self::Error> {
+                    match matched.macro_name() {
+                        #(#decode_arms)*
+                        other => Err(::nota_next::StructuralMacroNodeError::UnexpectedVariant {
+                            node: #node_name,
+                            variant: other.to_owned(),
+                        }),
+                    }
+                }
+
+                fn to_structural_nota(&self) -> String {
+                    match self {
+                        #(#encode_arms)*
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct StructuralVariantDerive {
+    enum_name: Ident,
+    node_name: String,
+    variant_name: Ident,
+    field_types: Vec<syn::Type>,
+    shape: StructuralVariantShape,
+}
+
+impl StructuralVariantDerive {
+    fn parse(enum_name: &Ident, node_name: &str, variant: &Variant) -> Result<Self, Error> {
+        let field_types = match &variant.fields {
+            Fields::Unit => Vec::new(),
+            Fields::Unnamed(fields) => fields
+                .unnamed
+                .iter()
+                .map(|field| field.ty.clone())
+                .collect(),
+            Fields::Named(fields) => {
+                return Err(Error::new_spanned(
+                    fields,
+                    "StructuralMacroNode variants carry unnamed fields, not named fields",
+                ));
+            }
+        };
+        let shape = StructuralVariantShape::parse(variant)?;
+        shape.check_field_count(variant, field_types.len())?;
+        Ok(Self {
+            enum_name: enum_name.clone(),
+            node_name: node_name.to_owned(),
+            variant_name: variant.ident.clone(),
+            field_types,
+            shape,
+        })
+    }
+
+    fn variant_value(&self) -> TokenStreamTwo {
+        let variant_name = self.variant_name.to_string();
+        let expected = self.shape.expected_text(&variant_name);
+        self.shape.variant_value(&variant_name, &expected)
+    }
+
+    fn decode_arm(&self) -> TokenStreamTwo {
+        let variant_name = self.variant_name.to_string();
+        let constructor = self.decode_constructor(&variant_name);
+        quote! {
+            #variant_name => Ok(#constructor),
+        }
+    }
+
+    fn decode_constructor(&self, variant_text: &str) -> TokenStreamTwo {
+        let enum_name = &self.enum_name;
+        let variant_name = &self.variant_name;
+        if self.field_types.is_empty() {
+            return quote!(#enum_name::#variant_name);
+        }
+        let node_name = &self.node_name;
+        let field_decodes = self
+            .field_types
+            .iter()
+            .enumerate()
+            .map(|(field_index, field_type)| {
+                let block = self.shape.field_block(field_index, node_name, variant_text);
+                quote! {
+                    <#field_type as ::nota_next::StructuralMacroNode>::from_structural_block(#block)
+                        .map_err(|error| ::nota_next::StructuralMacroNodeError::Field {
+                            node: #node_name,
+                            variant: #variant_text,
+                            field: #field_index,
+                            error: error.to_string(),
+                        })?
+                }
+            });
+        quote!(#enum_name::#variant_name(#(#field_decodes),*))
+    }
+
+    fn encode_arm(&self) -> TokenStreamTwo {
+        let enum_name = &self.enum_name;
+        let variant_name = &self.variant_name;
+        let bindings = (0..self.field_types.len())
+            .map(|index| format_ident!("field_{}", index))
+            .collect::<Vec<_>>();
+        let pattern = if bindings.is_empty() {
+            quote!(#enum_name::#variant_name)
+        } else {
+            quote!(#enum_name::#variant_name(#(#bindings),*))
+        };
+        let body = self.shape.encode_body(&bindings);
+        quote! {
+            #pattern => #body,
+        }
+    }
+}
+
+enum StructuralVariantShape {
+    PascalAtom,
+    Headed { head: String, arity: usize },
+    PascalHead { arity: usize },
+}
+
+impl StructuralVariantShape {
+    fn parse(variant: &Variant) -> Result<Self, Error> {
+        let mut pascal_atom = false;
+        let mut pascal_head = false;
+        let mut head: Option<String> = None;
+        let mut arity: Option<usize> = None;
+        let mut found = false;
+        for attribute in &variant.attrs {
+            if !attribute.path().is_ident("shape") {
+                continue;
+            }
+            found = true;
+            attribute.parse_nested_meta(|meta| {
+                if meta.path.is_ident("pascal_atom") {
+                    pascal_atom = true;
+                    return Ok(());
+                }
+                if meta.path.is_ident("pascal_head") {
+                    pascal_head = true;
+                    return Ok(());
+                }
+                if meta.path.is_ident("head") {
+                    let value: LitStr = meta.value()?.parse()?;
+                    head = Some(value.value());
+                    return Ok(());
+                }
+                if meta.path.is_ident("arity") {
+                    let value: LitInt = meta.value()?.parse()?;
+                    arity = Some(value.base10_parse()?);
+                    return Ok(());
+                }
+                Err(meta.error("unsupported shape attribute"))
+            })?;
+        }
+        if !found {
+            return Err(Error::new_spanned(
+                variant,
+                "structural macro node variant needs a #[shape(...)] attribute",
+            ));
+        }
+        if pascal_atom {
+            return Ok(Self::PascalAtom);
+        }
+        if let Some(head) = head {
+            let arity =
+                arity.ok_or_else(|| Error::new_spanned(variant, "head shape needs arity = N"))?;
+            return Ok(Self::Headed { head, arity });
+        }
+        if pascal_head {
+            let arity = arity
+                .ok_or_else(|| Error::new_spanned(variant, "pascal_head shape needs arity = N"))?;
+            return Ok(Self::PascalHead { arity });
+        }
+        Err(Error::new_spanned(
+            variant,
+            "shape must be pascal_atom, head = \"...\" with arity, or pascal_head with arity",
+        ))
+    }
+
+    fn check_field_count(&self, variant: &Variant, fields: usize) -> Result<(), Error> {
+        let expected = match self {
+            Self::PascalAtom => 1,
+            Self::Headed { arity, .. } => arity.saturating_sub(1),
+            Self::PascalHead { arity } => *arity,
+        };
+        if fields != expected {
+            return Err(Error::new_spanned(
+                variant,
+                format!("this shape expects {expected} field(s); the variant carries {fields}"),
+            ));
+        }
+        Ok(())
+    }
+
+    fn variant_value(&self, variant_name: &str, expected: &str) -> TokenStreamTwo {
+        match self {
+            Self::PascalAtom => quote! {
+                ::nota_next::BlockShape::pascal_atom(Some(::nota_next::CaptureName::new("field_0")))
+                    .into_structural_variant(#variant_name, #expected)
+            },
+            Self::Headed { head, arity } => {
+                let arity = *arity as u64;
+                quote! {
+                    ::nota_next::BlockShape::headed_parenthesis(
+                        #head,
+                        ::nota_next::MacroObjectCount::Exact(#arity),
+                        Some(::nota_next::CaptureName::new("signature")),
+                    )
+                    .into_structural_variant(#variant_name, #expected)
+                }
+            }
+            Self::PascalHead { arity } => {
+                let arity = *arity as u64;
+                quote! {
+                    ::nota_next::BlockShape::pascal_headed_parenthesis(
+                        ::nota_next::MacroObjectCount::Exact(#arity),
+                        ::nota_next::CaptureName::new("field_0"),
+                        Some(::nota_next::CaptureName::new("signature")),
+                    )
+                    .into_structural_variant(#variant_name, #expected)
+                }
+            }
+        }
+    }
+
+    fn expected_text(&self, variant_name: &str) -> String {
+        match self {
+            Self::PascalAtom => format!("{variant_name}: PascalCase atom"),
+            Self::Headed { head, arity } => {
+                format!("{variant_name}: parenthesized {head} head with arity {arity}")
+            }
+            Self::PascalHead { arity } => {
+                format!("{variant_name}: parenthesized PascalCase head with arity {arity}")
+            }
+        }
+    }
+
+    fn field_block(
+        &self,
+        field_index: usize,
+        node_name: &str,
+        variant_name: &str,
+    ) -> TokenStreamTwo {
+        match self.field_slot(field_index) {
+            StructuralFieldSlot::Capture(capture_name) => quote! {
+                matched.block_capture(&::nota_next::CaptureName::new(#capture_name))
+                    .ok_or(::nota_next::StructuralMacroNodeError::MissingCapture {
+                        node: #node_name,
+                        variant: #variant_name,
+                        capture: #capture_name,
+                    })?
+            },
+            StructuralFieldSlot::Argument(index) => quote! {
+                matched.capture(&::nota_next::CaptureName::new("arguments"))
+                    .ok_or(::nota_next::StructuralMacroNodeError::MissingCapture {
+                        node: #node_name,
+                        variant: #variant_name,
+                        capture: "arguments",
+                    })?
+                    .blocks()
+                    .get(#index)
+                    .copied()
+                    .ok_or(::nota_next::StructuralMacroNodeError::MissingSlot {
+                        node: #node_name,
+                        variant: #variant_name,
+                        capture: "arguments",
+                        slot: #index,
+                    })?
+            },
+        }
+    }
+
+    fn field_slot(&self, field_index: usize) -> StructuralFieldSlot {
+        match self {
+            Self::PascalAtom => StructuralFieldSlot::Capture("field_0"),
+            Self::Headed { .. } => StructuralFieldSlot::Argument(field_index),
+            Self::PascalHead { .. } if field_index == 0 => StructuralFieldSlot::Capture("field_0"),
+            Self::PascalHead { .. } => StructuralFieldSlot::Argument(field_index - 1),
+        }
+    }
+
+    fn encode_body(&self, bindings: &[Ident]) -> TokenStreamTwo {
+        match self {
+            Self::PascalAtom => {
+                let only = &bindings[0];
+                quote!(::nota_next::StructuralMacroNode::to_structural_nota(#only))
+            }
+            Self::Headed { head, .. } => {
+                let format_literal = LitStr::new(
+                    &self.headed_format(head, bindings.len()),
+                    proc_macro2::Span::call_site(),
+                );
+                let arguments = bindings
+                    .iter()
+                    .map(|binding| quote!(::nota_next::StructuralMacroNode::to_structural_nota(#binding)));
+                quote!(format!(#format_literal, #(#arguments),*))
+            }
+            Self::PascalHead { .. } => {
+                let format_literal = LitStr::new(
+                    &self.pascal_head_format(bindings.len()),
+                    proc_macro2::Span::call_site(),
+                );
+                let arguments = bindings
+                    .iter()
+                    .map(|binding| quote!(::nota_next::StructuralMacroNode::to_structural_nota(#binding)));
+                quote!(format!(#format_literal, #(#arguments),*))
+            }
+        }
+    }
+
+    fn headed_format(&self, head: &str, field_count: usize) -> String {
+        let mut output = String::from("(");
+        output.push_str(head);
+        for _ in 0..field_count {
+            output.push_str(" {}");
+        }
+        output.push(')');
+        output
+    }
+
+    fn pascal_head_format(&self, field_count: usize) -> String {
+        let placeholders = vec!["{}"; field_count].join(" ");
+        format!("({placeholders})")
+    }
+}
+
+enum StructuralFieldSlot {
+    Capture(&'static str),
+    Argument(usize),
 }

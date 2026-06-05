@@ -28,7 +28,10 @@
   enum variants with multiple unnamed fields encoded as `(Variant (field1
   field2 ...))`. Named struct derive emits body decode/encode first; ordinary
   parenthesized struct decode and `#[nota(known_root)]` document decode both
-  delegate into that body implementation.
+  delegate into that body implementation. It also derives
+  `StructuralMacroNode` for enum types with per-variant `#[shape(...)]`
+  attributes, generating the ordered structural variant list, capture decoding,
+  and reverse structural NOTA encoding.
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, direct body parsing, string formatting, and collection value
@@ -68,10 +71,10 @@
 - `StructuralMacroNode` is the typed enum bridge on top of the same mechanism.
   A consumer-provided enum type lists its structural variants in order, decodes
   from the selected `MacroMatch`, and encodes back to the structural NOTA
-  surface. This is the stable target for future derive support: the derive may
-  generate the variant list and decode/encode hooks, but the ordered structural
-  match belongs to the expected enum type's codec path, not to a global parser
-  registry.
+  surface. The `#[derive(StructuralMacroNode)]` implementation generates that
+  variant list and the decode/encode hooks from the enum's declaration order
+  and per-variant shape attributes. The ordered structural match belongs to the
+  expected enum type's codec path, not to a global parser registry.
 
 ## At-Binding Syntax
 
