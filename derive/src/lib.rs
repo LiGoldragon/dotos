@@ -676,7 +676,9 @@ impl StructuralDerive {
             Err(error) => return error.to_compile_error(),
         };
         let structural_variants = variants.iter().map(StructuralVariantDerive::variant_value);
-        let decode_arms = variants.iter().map(StructuralVariantDerive::decode_arm);
+        let direct_decode_arms = variants
+            .iter()
+            .map(StructuralVariantDerive::direct_decode_arm);
         let encode_arms = variants.iter().map(StructuralVariantDerive::encode_arm);
         let (implementation_generics, type_generics, where_clause) = generics.split_for_impl();
         quote! {
@@ -693,14 +695,39 @@ impl StructuralDerive {
                     ]
                 }
 
-                fn from_structural_match(matched: ::nota_next::MacroMatch<'_>) -> Result<Self, Self::Error> {
-                    match matched.macro_name() {
-                        #(#decode_arms)*
-                        other => Err(::nota_next::StructuralMacroNodeError::UnexpectedVariant {
-                            node: #node_name,
-                            variant: other.to_owned(),
-                        }),
+                fn from_structural_block(block: &::nota_next::Block) -> Result<Self, ::nota_next::StructuralMacroError<Self::Error>> {
+                    let variants =
+                        ::nota_next::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
+                            .map_err(::nota_next::StructuralMacroError::Dispatch)?;
+                    #(#direct_decode_arms)*
+                    let candidate = ::nota_next::MacroCandidate::from_block(Self::structural_position(), block);
+                    match variants.dispatch(&candidate) {
+                        Ok(matched) => Err(::nota_next::StructuralMacroError::MatchedNode(
+                            ::nota_next::StructuralMacroNodeError::UnexpectedVariant {
+                                node: #node_name,
+                                variant: matched.macro_name().to_owned(),
+                            }
+                        )),
+                        Err(error) => Err(::nota_next::StructuralMacroError::Dispatch(error)),
                     }
+                }
+
+                fn from_structural_candidate(candidate: ::nota_next::MacroCandidate<'_>) -> Result<Self, ::nota_next::StructuralMacroError<Self::Error>> {
+                    if let [block] = candidate.blocks() {
+                        return Self::from_structural_block(block);
+                    }
+                    let variants =
+                        ::nota_next::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
+                            .map_err(::nota_next::StructuralMacroError::Dispatch)?;
+                    let matched = variants
+                        .dispatch(&candidate)
+                        .map_err(::nota_next::StructuralMacroError::Dispatch)?;
+                    Err(::nota_next::StructuralMacroError::MatchedNode(
+                        ::nota_next::StructuralMacroNodeError::UnexpectedVariant {
+                            node: #node_name,
+                            variant: matched.macro_name().to_owned(),
+                        }
+                    ))
                 }
 
                 fn to_structural_nota(&self) -> String {
@@ -754,15 +781,21 @@ impl StructuralVariantDerive {
         self.shape.variant_value(&variant_name, &expected)
     }
 
-    fn decode_arm(&self) -> TokenStreamTwo {
-        let variant_name = self.variant_name.to_string();
-        let constructor = self.decode_constructor(&variant_name);
+    fn direct_decode_arm(&self) -> TokenStreamTwo {
+        let variant_text = self.variant_name.to_string();
+        let condition = self.shape.direct_match_condition();
+        let constructor = self.direct_decode_constructor(&variant_text);
         quote! {
-            #variant_name => Ok(#constructor),
+            if #condition {
+                return (|| -> Result<Self, Self::Error> {
+                    Ok(#constructor)
+                })()
+                .map_err(::nota_next::StructuralMacroError::MatchedNode);
+            }
         }
     }
 
-    fn decode_constructor(&self, variant_text: &str) -> TokenStreamTwo {
+    fn direct_decode_constructor(&self, variant_text: &str) -> TokenStreamTwo {
         let enum_name = &self.enum_name;
         let variant_name = &self.variant_name;
         if self.field_types.is_empty() {
@@ -774,7 +807,9 @@ impl StructuralVariantDerive {
             .iter()
             .enumerate()
             .map(|(field_index, field_type)| {
-                let block = self.shape.field_block(field_index, node_name, variant_text);
+                let block = self
+                    .shape
+                    .direct_field_block(field_index, node_name, variant_text);
                 quote! {
                     <#field_type as ::nota_next::StructuralMacroNode>::from_structural_block(#block)
                         .map_err(|error| ::nota_next::StructuralMacroNodeError::Field {
@@ -929,47 +964,72 @@ impl StructuralVariantShape {
         }
     }
 
-    fn field_block(
+    fn direct_match_condition(&self) -> TokenStreamTwo {
+        match self {
+            Self::PascalAtom => quote!(block.qualifies_as_pascal_case_symbol()),
+            Self::Headed { head, arity } => {
+                let arity = *arity;
+                quote! {
+                    block.is_parenthesis()
+                        && block.holds_root_objects() == #arity
+                        && block.root_object_at(0)
+                            .and_then(|root| root.demote_to_string())
+                            == Some(#head)
+                }
+            }
+            Self::PascalHead { arity } => {
+                let arity = *arity;
+                quote! {
+                    block.is_parenthesis()
+                        && block.holds_root_objects() == #arity
+                        && block.root_object_at(0)
+                            .is_some_and(|root| root.qualifies_as_pascal_case_symbol())
+                }
+            }
+        }
+    }
+
+    fn direct_field_block(
         &self,
         field_index: usize,
         node_name: &str,
         variant_name: &str,
     ) -> TokenStreamTwo {
-        match self.field_slot(field_index) {
-            StructuralFieldSlot::Capture(capture_name) => quote! {
-                matched.block_capture(&::nota_next::CaptureName::new(#capture_name))
-                    .ok_or(::nota_next::StructuralMacroNodeError::MissingCapture {
-                        node: #node_name,
-                        variant: #variant_name,
-                        capture: #capture_name,
-                    })?
-            },
-            StructuralFieldSlot::Argument(index) => quote! {
-                matched.capture(&::nota_next::CaptureName::new("arguments"))
-                    .ok_or(::nota_next::StructuralMacroNodeError::MissingCapture {
-                        node: #node_name,
-                        variant: #variant_name,
-                        capture: "arguments",
-                    })?
-                    .blocks()
-                    .get(#index)
-                    .copied()
-                    .ok_or(::nota_next::StructuralMacroNodeError::MissingSlot {
-                        node: #node_name,
-                        variant: #variant_name,
-                        capture: "arguments",
-                        slot: #index,
-                    })?
-            },
-        }
-    }
-
-    fn field_slot(&self, field_index: usize) -> StructuralFieldSlot {
         match self {
-            Self::PascalAtom => StructuralFieldSlot::Capture("field_0"),
-            Self::Headed { .. } => StructuralFieldSlot::Argument(field_index),
-            Self::PascalHead { .. } if field_index == 0 => StructuralFieldSlot::Capture("field_0"),
-            Self::PascalHead { .. } => StructuralFieldSlot::Argument(field_index - 1),
+            Self::PascalAtom => quote!(block),
+            Self::Headed { .. } => {
+                let child_index = field_index + 1;
+                quote! {
+                    block.root_object_at(#child_index)
+                        .ok_or(::nota_next::StructuralMacroNodeError::MissingSlot {
+                            node: #node_name,
+                            variant: #variant_name,
+                            capture: "arguments",
+                            slot: #field_index,
+                        })?
+                }
+            }
+            Self::PascalHead { .. } if field_index == 0 => quote! {
+                block.root_object_at(0)
+                    .ok_or(::nota_next::StructuralMacroNodeError::MissingCapture {
+                        node: #node_name,
+                        variant: #variant_name,
+                        capture: "field_0",
+                    })?
+            },
+            Self::PascalHead { .. } => {
+                let child_index = field_index;
+                let slot = field_index - 1;
+                quote! {
+                    block.root_object_at(#child_index)
+                        .ok_or(::nota_next::StructuralMacroNodeError::MissingSlot {
+                            node: #node_name,
+                            variant: #variant_name,
+                            capture: "arguments",
+                            slot: #slot,
+                        })?
+                }
+            }
         }
     }
 
@@ -1016,9 +1076,4 @@ impl StructuralVariantShape {
         let placeholders = vec!["{}"; field_count].join(" ");
         format!("({placeholders})")
     }
-}
-
-enum StructuralFieldSlot {
-    Capture(&'static str),
-    Argument(usize),
 }

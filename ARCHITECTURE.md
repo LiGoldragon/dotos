@@ -67,14 +67,19 @@
 - `StructuralVariant` and `StructuralVariantSet` are the codec-facing macro-node
   nouns. A variant carries a name, a structural pattern, and an expected-shape
   diagnostic. The set carries the expected position for one typed node and tries
-  the variants in declaration order.
+  the variants in declaration order. Validation rejects silent conflicts,
+  including a general Pascal-headed parenthesis variant that would make a later
+  same-arity literal-headed variant unreachable.
 - `StructuralMacroNode` is the typed enum bridge on top of the same mechanism.
   A consumer-provided enum type lists its structural variants in order, decodes
-  from the selected `MacroMatch`, and encodes back to the structural NOTA
-  surface. The `#[derive(StructuralMacroNode)]` implementation generates that
-  variant list and the decode/encode hooks from the enum's declaration order
-  and per-variant shape attributes. The ordered structural match belongs to the
-  expected enum type's codec path, not to a global parser registry.
+  the incoming `MacroCandidate` directly into a typed Rust value, and encodes
+  back to the structural NOTA surface. The `#[derive(StructuralMacroNode)]`
+  implementation generates that variant list and the direct decode/encode hooks
+  from the enum's declaration order and per-variant shape attributes. The
+  ordered structural match belongs to the expected enum type's codec path, not
+  to a global parser registry. `MacroMatch` remains the lower-level registry
+  result for exploration and diagnostics, but it is no longer the typed-node
+  trait boundary.
 
 ## At-Binding Syntax
 

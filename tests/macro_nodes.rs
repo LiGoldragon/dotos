@@ -1,8 +1,8 @@
 use nota_next::{
     AtomShape, BlockShape, CaptureName, DelimitedShape, Document, MacroCandidate, MacroDelimiter,
     MacroMatch, MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern, PatternElement,
-    PositionPredicate, StructuralMacroNode, StructuralMacroNodeError, StructuralVariant,
-    StructuralVariantSet,
+    PositionPredicate, StructuralMacroError, StructuralMacroNode, StructuralMacroNodeError,
+    StructuralVariant, StructuralVariantSet,
 };
 use std::fmt;
 
@@ -287,7 +287,7 @@ fn structural_block_shape_order_controls_specific_head_shadowing() {
     assert_eq!(matched_specific.macro_name(), "optional reference");
 
     let general_first = StructuralVariantSet::new(
-        position.clone(),
+        position,
         vec![
             BlockShape::pascal_headed_parenthesis(
                 MacroObjectCount::Exact(2),
@@ -306,11 +306,9 @@ fn structural_block_shape_order_controls_specific_head_shadowing() {
             .into_structural_variant("optional reference", "Optional head carrying one reference"),
         ],
     )
-    .expect("structural variants have no conflicts");
-    let matched_general = general_first
-        .dispatch(&MacroCandidate::from_block(position, block))
-        .expect("general-first variant set matches");
-    assert_eq!(matched_general.macro_name(), "application reference");
+    .expect_err("general Pascal head makes the later Optional head unreachable");
+    assert!(general_first.to_string().contains("application reference"));
+    assert!(general_first.to_string().contains("optional reference"));
 }
 
 #[test]
@@ -345,8 +343,8 @@ fn structural_macro_node_decodes_and_encodes_data_variant() {
 fn structural_macro_node_derive_uses_enum_variant_order() {
     let input = "(Optional Integer)";
     let decoded = DerivedReference::from_structural_nota(input).expect("derived node decodes");
-    let shadowed =
-        MisorderedDerivedReference::from_structural_nota(input).expect("misordered node decodes");
+    let misordered = MisorderedDerivedReference::from_structural_nota(input)
+        .expect_err("misordered derived node has an unreachable Optional variant");
 
     assert_eq!(
         decoded,
@@ -355,15 +353,8 @@ fn structural_macro_node_derive_uses_enum_variant_order() {
         ))))
     );
     assert_eq!(decoded.to_structural_nota(), input);
-    assert_eq!(
-        shadowed,
-        MisorderedDerivedReference::Application(
-            DerivedTypeName("Optional".to_owned()),
-            Box::new(MisorderedDerivedReference::Named(DerivedTypeName(
-                "Integer".to_owned()
-            )))
-        )
-    );
+    assert!(misordered.to_string().contains("Application"));
+    assert!(misordered.to_string().contains("Optional"));
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -411,25 +402,36 @@ impl StructuralMacroNode for ExampleStructuralVariant {
         ]
     }
 
-    fn from_structural_match(matched: MacroMatch<'_>) -> Result<Self, Self::Error> {
-        match matched.macro_name() {
-            "reserved literal variant" => Ok(Self::Reserved),
-            "unit variant" => {
-                let variant_name =
-                    ExampleStructuralVariantMatch::new(&matched).captured_text("variant_name")?;
-                Ok(Self::Unit { variant_name })
+    fn from_structural_candidate(
+        candidate: MacroCandidate<'_>,
+    ) -> Result<Self, StructuralMacroError<Self::Error>> {
+        let variants =
+            StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
+                .map_err(StructuralMacroError::Dispatch)?;
+        let matched = variants
+            .dispatch(&candidate)
+            .map_err(StructuralMacroError::Dispatch)?;
+        (|| -> Result<Self, Self::Error> {
+            match matched.macro_name() {
+                "reserved literal variant" => Ok(Self::Reserved),
+                "unit variant" => {
+                    let variant_name = ExampleStructuralVariantMatch::new(&matched)
+                        .captured_text("variant_name")?;
+                    Ok(Self::Unit { variant_name })
+                }
+                "data variant" => {
+                    let structural_match = ExampleStructuralVariantMatch::new(&matched);
+                    Ok(Self::Data {
+                        variant_name: structural_match.captured_text("variant_name")?,
+                        payload_name: structural_match.captured_text("payload_name")?,
+                    })
+                }
+                other => Err(ExampleStructuralVariantError::UnexpectedVariant(
+                    other.to_owned(),
+                )),
             }
-            "data variant" => {
-                let structural_match = ExampleStructuralVariantMatch::new(&matched);
-                Ok(Self::Data {
-                    variant_name: structural_match.captured_text("variant_name")?,
-                    payload_name: structural_match.captured_text("payload_name")?,
-                })
-            }
-            other => Err(ExampleStructuralVariantError::UnexpectedVariant(
-                other.to_owned(),
-            )),
-        }
+        })()
+        .map_err(StructuralMacroError::MatchedNode)
     }
 
     fn to_structural_nota(&self) -> String {
@@ -503,7 +505,25 @@ impl StructuralMacroNode for DerivedTypeName {
         ]
     }
 
-    fn from_structural_match(matched: MacroMatch<'_>) -> Result<Self, Self::Error> {
+    fn from_structural_candidate(
+        candidate: MacroCandidate<'_>,
+    ) -> Result<Self, StructuralMacroError<Self::Error>> {
+        let variants =
+            StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
+                .map_err(StructuralMacroError::Dispatch)?;
+        let matched = variants
+            .dispatch(&candidate)
+            .map_err(StructuralMacroError::Dispatch)?;
+        Self::from_match(matched).map_err(StructuralMacroError::MatchedNode)
+    }
+
+    fn to_structural_nota(&self) -> String {
+        self.0.clone()
+    }
+}
+
+impl DerivedTypeName {
+    fn from_match(matched: MacroMatch<'_>) -> Result<Self, StructuralMacroNodeError> {
         let block = matched.block_capture(&CaptureName::new("field_0")).ok_or(
             StructuralMacroNodeError::MissingCapture {
                 node: "DerivedTypeName",
@@ -519,10 +539,6 @@ impl StructuralMacroNode for DerivedTypeName {
             });
         };
         Ok(Self(text.to_owned()))
-    }
-
-    fn to_structural_nota(&self) -> String {
-        self.0.clone()
     }
 }
 

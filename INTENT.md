@@ -97,10 +97,13 @@ selects a variant without exposing a registry as the design surface.*
 *The enum type is also the derive surface. `#[derive(StructuralMacroNode)]`
 reads per-variant `#[shape(...)]` attributes such as `pascal_atom`,
 `head = "Optional", arity = 2`, and `pascal_head, arity = 2`; the generated
-implementation lists those variants in declaration order, decodes matched
-captures into the enum payload fields recursively, and writes the same
+implementation lists those variants in declaration order, validates that
+later variants are still reachable, decodes the incoming structural candidate
+directly into the enum payload fields recursively, and writes the same
 structural NOTA surface back out. The derive makes the macro-node type itself
-the specification rather than making users hand-write a parser or registry.*
+the specification rather than making users hand-write a parser or registry.
+The low-level `MacroMatch` registry remains an exploration and diagnostics
+surface, not the required typed-node codec hook.*
 
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.

@@ -348,6 +348,29 @@ impl Pattern {
             None
         }
     }
+
+    fn silently_shadows(&self, later: &Self) -> bool {
+        self.has_same_match_shape(later)
+            || self
+                .parenthesized_head_shape()
+                .is_some_and(|earlier| earlier.silently_shadows(later.parenthesized_head_shape()))
+    }
+
+    fn has_same_match_shape(&self, other: &Self) -> bool {
+        self.elements().len() == other.elements().len()
+            && self
+                .elements()
+                .iter()
+                .zip(other.elements())
+                .all(|(left, right)| left.has_same_match_shape(right))
+    }
+
+    fn parenthesized_head_shape(&self) -> Option<ParenthesizedHeadShape<'_>> {
+        match self.elements() {
+            [PatternElement::Delimited(shape)] => shape.parenthesized_head_shape(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(
@@ -469,7 +492,7 @@ impl StructuralVariantSet {
     pub fn validate_no_silent_conflicts(&self) -> Result<(), StructuralVariantError> {
         for (index, first) in self.variants.iter().enumerate() {
             for second in self.variants.iter().skip(index + 1) {
-                if first.pattern() == second.pattern() {
+                if first.pattern().silently_shadows(second.pattern()) {
                     return Err(StructuralVariantError::Conflict(
                         StructuralVariantConflict::new(
                             first.name().to_owned(),
@@ -558,6 +581,38 @@ impl PatternElement {
             Self::Rest(_) => None,
         }
     }
+
+    fn has_same_match_shape(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Any(_), Self::Any(_)) => true,
+            (Self::Atom(left), Self::Atom(right)) => left.has_same_match_shape(right),
+            (Self::Delimited(left), Self::Delimited(right)) => left.has_same_match_shape(right),
+            (Self::Literal(left), Self::Literal(right)) => left == right,
+            (Self::Rest(_), Self::Rest(_)) => true,
+            (
+                Self::Any(_)
+                | Self::Atom(_)
+                | Self::Delimited(_)
+                | Self::Literal(_)
+                | Self::Rest(_),
+                Self::Any(_)
+                | Self::Atom(_)
+                | Self::Delimited(_)
+                | Self::Literal(_)
+                | Self::Rest(_),
+            ) => false,
+        }
+    }
+
+    fn parenthesized_head_shape(&self, arity: u64) -> Option<ParenthesizedHeadShape<'_>> {
+        match self {
+            Self::Atom(shape) if shape.matches_pascal_head() => {
+                Some(ParenthesizedHeadShape::Pascal { arity })
+            }
+            Self::Literal(value) => Some(ParenthesizedHeadShape::Literal { arity, value }),
+            Self::Any(_) | Self::Atom(_) | Self::Delimited(_) | Self::Rest(_) => None,
+        }
+    }
 }
 
 #[derive(
@@ -628,6 +683,14 @@ impl AtomShape {
                 .sigil
                 .as_ref()
                 .is_none_or(|sigil| sigil.matches(atom.text()))
+    }
+
+    fn has_same_match_shape(&self, other: &Self) -> bool {
+        self.case == other.case && self.sigil == other.sigil
+    }
+
+    fn matches_pascal_head(&self) -> bool {
+        self.case == Some(AtomCase::PascalCase) && self.sigil.is_none()
     }
 }
 
@@ -798,6 +861,63 @@ impl DelimitedShape {
         }
         Some(())
     }
+
+    fn has_same_match_shape(&self, other: &Self) -> bool {
+        self.delimiter == other.delimiter
+            && self.object_count == other.object_count
+            && self.children_match_shape(other)
+    }
+
+    fn children_match_shape(&self, other: &Self) -> bool {
+        match (&self.children, &other.children) {
+            (Some(left), Some(right)) => left.has_same_match_shape(right),
+            (None, None) => true,
+            (Some(_), None) | (None, Some(_)) => false,
+        }
+    }
+
+    fn parenthesized_head_shape(&self) -> Option<ParenthesizedHeadShape<'_>> {
+        if self.delimiter != MacroDelimiter::Parenthesis {
+            return None;
+        }
+        let MacroObjectCount::Exact(arity) = self.object_count else {
+            return None;
+        };
+        let children = self.children.as_ref()?;
+        match children.elements() {
+            [head, PatternElement::Rest(_)] => head.parenthesized_head_shape(arity),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ParenthesizedHeadShape<'shape> {
+    Pascal { arity: u64 },
+    Literal { arity: u64, value: &'shape str },
+}
+
+impl<'shape> ParenthesizedHeadShape<'shape> {
+    fn silently_shadows(&self, later: Option<Self>) -> bool {
+        match (self, later) {
+            (
+                Self::Pascal { arity: first },
+                Some(Self::Literal {
+                    arity: second,
+                    value,
+                }),
+            ) => first == &second && Self::literal_matches_pascal_head(value),
+            _ => false,
+        }
+    }
+
+    fn literal_matches_pascal_head(value: &str) -> bool {
+        value
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_uppercase())
+            && !value.contains('-')
+    }
 }
 
 #[derive(
@@ -915,7 +1035,9 @@ impl MacroRegistry {
     pub fn validate_no_silent_conflicts(&self) -> Result<(), MacroError> {
         for (index, first) in self.nodes.iter().enumerate() {
             for second in self.nodes.iter().skip(index + 1) {
-                if first.position() == second.position() && first.pattern() == second.pattern() {
+                if first.position() == second.position()
+                    && first.pattern().silently_shadows(second.pattern())
+                {
                     return Err(MacroError::Conflict(MacroConflict::new(
                         first.name().to_owned(),
                         second.name().to_owned(),
@@ -1149,8 +1271,6 @@ pub trait StructuralMacroNode: Sized {
 
     fn structural_variants() -> Vec<StructuralVariant>;
 
-    fn from_structural_match(matched: MacroMatch<'_>) -> Result<Self, Self::Error>;
-
     fn to_structural_nota(&self) -> String;
 
     fn from_structural_nota(source: &str) -> Result<Self, StructuralMacroError<Self::Error>> {
@@ -1184,15 +1304,7 @@ pub trait StructuralMacroNode: Sized {
 
     fn from_structural_candidate(
         candidate: MacroCandidate<'_>,
-    ) -> Result<Self, StructuralMacroError<Self::Error>> {
-        let variants =
-            StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
-                .map_err(StructuralMacroError::Dispatch)?;
-        let matched = variants
-            .dispatch(&candidate)
-            .map_err(StructuralMacroError::Dispatch)?;
-        Self::from_structural_match(matched).map_err(StructuralMacroError::MatchedNode)
-    }
+    ) -> Result<Self, StructuralMacroError<Self::Error>>;
 }
 
 impl<Inner> StructuralMacroNode for Box<Inner>
@@ -1209,16 +1321,14 @@ where
         Inner::structural_variants()
     }
 
-    fn from_structural_match(matched: MacroMatch<'_>) -> Result<Self, Self::Error> {
-        Ok(Box::new(Inner::from_structural_match(matched)?))
-    }
-
     fn to_structural_nota(&self) -> String {
         self.as_ref().to_structural_nota()
     }
 
-    fn from_structural_block(block: &Block) -> Result<Self, StructuralMacroError<Self::Error>> {
-        Ok(Box::new(Inner::from_structural_block(block)?))
+    fn from_structural_candidate(
+        candidate: MacroCandidate<'_>,
+    ) -> Result<Self, StructuralMacroError<Self::Error>> {
+        Ok(Box::new(Inner::from_structural_candidate(candidate)?))
     }
 }
 
