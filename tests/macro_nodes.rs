@@ -1,7 +1,7 @@
 use nota_next::{
     AtomShape, BlockShape, CaptureName, DelimitedShape, Document, MacroCandidate, MacroDelimiter,
     MacroMatch, MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern, PatternElement,
-    PositionPredicate, StructuralMacroNode,
+    PositionPredicate, StructuralMacroNode, StructuralVariant, StructuralVariantSet,
 };
 use std::fmt;
 
@@ -259,60 +259,56 @@ fn structural_block_shape_order_controls_specific_head_shadowing() {
     let block = document.root_object_at(0).expect("fixture has root");
     let position = PositionPredicate::named("TypeReference");
 
-    let specific_first = MacroRegistry::new(vec![
-        BlockShape::headed_parenthesis(
-            "Optional",
-            MacroObjectCount::Exact(2),
-            Some(CaptureName::new("signature")),
-        )
-        .into_macro_node(
-            "optional reference",
-            position.clone(),
-            "Optional head carrying one reference",
-        ),
-        BlockShape::pascal_headed_parenthesis(
-            MacroObjectCount::Exact(2),
-            CaptureName::new("constructor"),
-            Some(CaptureName::new("signature")),
-        )
-        .into_macro_node(
-            "application reference",
-            position.clone(),
-            "PascalCase head carrying one reference",
-        ),
-    ])
-    .expect("registry has no conflicts");
+    let specific_first = StructuralVariantSet::new(
+        position.clone(),
+        vec![
+            BlockShape::headed_parenthesis(
+                "Optional",
+                MacroObjectCount::Exact(2),
+                Some(CaptureName::new("signature")),
+            )
+            .into_structural_variant("optional reference", "Optional head carrying one reference"),
+            BlockShape::pascal_headed_parenthesis(
+                MacroObjectCount::Exact(2),
+                CaptureName::new("constructor"),
+                Some(CaptureName::new("signature")),
+            )
+            .into_structural_variant(
+                "application reference",
+                "PascalCase head carrying one reference",
+            ),
+        ],
+    )
+    .expect("structural variants have no conflicts");
     let matched_specific = specific_first
         .dispatch(&MacroCandidate::from_block(position.clone(), block))
-        .expect("specific-first registry matches");
+        .expect("specific-first variant set matches");
     assert_eq!(matched_specific.macro_name(), "optional reference");
 
-    let general_first = MacroRegistry::new(vec![
-        BlockShape::pascal_headed_parenthesis(
-            MacroObjectCount::Exact(2),
-            CaptureName::new("constructor"),
-            Some(CaptureName::new("signature")),
-        )
-        .into_macro_node(
-            "application reference",
-            position.clone(),
-            "PascalCase head carrying one reference",
-        ),
-        BlockShape::headed_parenthesis(
-            "Optional",
-            MacroObjectCount::Exact(2),
-            Some(CaptureName::new("signature")),
-        )
-        .into_macro_node(
-            "optional reference",
-            position.clone(),
-            "Optional head carrying one reference",
-        ),
-    ])
-    .expect("registry has no conflicts");
+    let general_first = StructuralVariantSet::new(
+        position.clone(),
+        vec![
+            BlockShape::pascal_headed_parenthesis(
+                MacroObjectCount::Exact(2),
+                CaptureName::new("constructor"),
+                Some(CaptureName::new("signature")),
+            )
+            .into_structural_variant(
+                "application reference",
+                "PascalCase head carrying one reference",
+            ),
+            BlockShape::headed_parenthesis(
+                "Optional",
+                MacroObjectCount::Exact(2),
+                Some(CaptureName::new("signature")),
+            )
+            .into_structural_variant("optional reference", "Optional head carrying one reference"),
+        ],
+    )
+    .expect("structural variants have no conflicts");
     let matched_general = general_first
         .dispatch(&MacroCandidate::from_block(position, block))
-        .expect("general-first registry matches");
+        .expect("general-first variant set matches");
     assert_eq!(matched_general.macro_name(), "application reference");
 }
 
@@ -363,18 +359,12 @@ impl StructuralMacroNode for ExampleStructuralVariant {
         PositionPredicate::named("ExampleVariant")
     }
 
-    fn structural_variants() -> Vec<MacroNodeDefinition> {
+    fn structural_variants() -> Vec<StructuralVariant> {
         vec![
-            BlockShape::literal("Reserved").into_macro_node(
-                "reserved literal variant",
-                Self::structural_position(),
-                "literal Reserved variant",
-            ),
-            BlockShape::pascal_atom(Some(CaptureName::new("variant_name"))).into_macro_node(
-                "unit variant",
-                Self::structural_position(),
-                "PascalCase variant atom",
-            ),
+            BlockShape::literal("Reserved")
+                .into_structural_variant("reserved literal variant", "literal Reserved variant"),
+            BlockShape::pascal_atom(Some(CaptureName::new("variant_name")))
+                .into_structural_variant("unit variant", "PascalCase variant atom"),
             BlockShape::delimited(
                 MacroDelimiter::Parenthesis,
                 MacroObjectCount::Exact(2),
@@ -388,9 +378,8 @@ impl StructuralMacroNode for ExampleStructuralVariant {
                     "payload_name",
                 )))),
             ]))
-            .into_macro_node(
+            .into_structural_variant(
                 "data variant",
-                Self::structural_position(),
                 "parenthesized variant name plus payload name",
             ),
         ]

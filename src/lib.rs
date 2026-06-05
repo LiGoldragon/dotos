@@ -22,7 +22,8 @@ pub use macros::{
     AtomCase, AtomShape, BlockShape, CaptureName, CapturedValue, DelimitedShape, MacroCandidate,
     MacroConflict, MacroDelimiter, MacroError, MacroMatch, MacroNodeDefinition, MacroObjectCount,
     MacroRegistry, Pattern, PatternElement, PositionPredicate, SigilPosition, SigilSpec,
-    StructuralMacroError, StructuralMacroNode,
+    StructuralMacroError, StructuralMacroNode, StructuralVariant, StructuralVariantConflict,
+    StructuralVariantError, StructuralVariantSet,
 };
 pub use nota_next_derive::{NotaDecode, NotaEncode};
 pub use parser::{

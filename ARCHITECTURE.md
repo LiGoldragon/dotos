@@ -44,28 +44,34 @@
 - `Box<T>` is a storage wrapper only. Its codec delegates to `T` so recursive
   Rust data does not create a second NOTA shape.
 - `macros` is the reusable macro-node mechanism. `MacroNodeDefinition`
-  describes a structural pattern at a position, `MacroRegistry` dispatches a
-  candidate block sequence through ordered definitions, and `MacroMatch`
-  returns named captures to the consumer. Delimited captures expose the matched
-  block's inner `NotaBody`, not the wrapper delimiter, so the next semantic
-  parser always receives body contents. The mechanism is semantic-neutral:
-  schema-next may register struct/enum/newtype patterns, but nota-next only
-  matches atoms, delimiters, literals, and rest captures. A delimited pattern
-  can carry a recursive `Pattern` over that block's children, giving consumers
-  arbitrarily nested structural constraints without recursive text-template
-  logic.
+  describes a standalone structural pattern at a position, `MacroRegistry`
+  dispatches a candidate block sequence through ordered definitions, and
+  `MacroMatch` returns named captures to the consumer. This registry surface is
+  useful for low-level exploration and schema's existing transitional matcher,
+  but it is not the conceptual home of typed macro nodes. Delimited captures
+  expose the matched block's inner `NotaBody`, not the wrapper delimiter, so the
+  next semantic parser always receives body contents. The mechanism is
+  semantic-neutral: schema-next may register struct/enum/newtype patterns, but
+  nota-next only matches atoms, delimiters, literals, and rest captures. A
+  delimited pattern can carry a recursive `Pattern` over that block's children,
+  giving consumers arbitrarily nested structural constraints without recursive
+  text-template logic.
 - `BlockShape` is the ergonomic per-variant structural description layered on
   top of `Pattern`. It gives structural macro authors names such as
   Pascal-case atom, headed parenthesis, Pascal-headed parenthesis, literal, and
-  delimited block, then lowers those shapes into `Pattern` /
-  `MacroNodeDefinition`. This keeps one matcher while making a future derive
-  macro's variant attributes readable.
+  delimited block, then lowers those shapes into `Pattern` for either
+  standalone macro definitions or typed structural variants.
+- `StructuralVariant` and `StructuralVariantSet` are the codec-facing macro-node
+  nouns. A variant carries a name, a structural pattern, and an expected-shape
+  diagnostic. The set carries the expected position for one typed node and tries
+  the variants in declaration order.
 - `StructuralMacroNode` is the typed enum bridge on top of the same mechanism.
-  A consumer-provided type lists its structural variants in order, decodes from
-  the selected `MacroMatch`, and encodes back to the structural NOTA surface.
-  This is the stable target for future derive support: the derive may generate
-  the variant list and decode/encode hooks, but the ordered matching and
-  captures remain the NOTA-layer responsibility.
+  A consumer-provided enum type lists its structural variants in order, decodes
+  from the selected `MacroMatch`, and encodes back to the structural NOTA
+  surface. This is the stable target for future derive support: the derive may
+  generate the variant list and decode/encode hooks, but the ordered structural
+  match belongs to the expected enum type's codec path, not to a global parser
+  registry.
 
 ## At-Binding Syntax
 
@@ -99,9 +105,11 @@ The macro-node layer preserves that boundary. A macro definition says "this
 shape matches here" and returns captures; it does not say whether the match is
 a schema struct, an intent record, a deployment stanza, or any other consumer
 object. Consumers attach vocabulary and lowering on top of the returned match.
-The typed structural node layer preserves the same split: NOTA tries ordered
-structural cases and hands back captures; the consumer's Rust enum decides what
-those captures mean and how the chosen variant is written back to source.
+The typed structural node layer preserves the same split while making the
+expected type primary: the caller asks the codec for a known enum type, that
+enum tries its ordered structural variants, and the enum decides what the
+captures mean and how the chosen variant is written back to source. NOTA does
+not discover macro meaning through a global parser.
 
 The schema layer may assign declaration meaning to pipe-parenthesis or
 pipe-brace, but `nota-next` only reports those delimiter shapes and their

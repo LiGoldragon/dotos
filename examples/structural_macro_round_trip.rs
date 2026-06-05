@@ -1,8 +1,8 @@
 use std::fmt;
 
 use nota_next::{
-    Block, BlockShape, CaptureName, Document, MacroMatch, MacroNodeDefinition, MacroObjectCount,
-    PositionPredicate, StructuralMacroNode,
+    Block, BlockShape, CaptureName, Document, MacroMatch, MacroObjectCount, PositionPredicate,
+    StructuralMacroNode, StructuralVariant, StructuralVariantSet,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -54,7 +54,7 @@ impl TypeReference {
         }
     }
 
-    fn variants_application_first() -> Vec<MacroNodeDefinition> {
+    fn variants_application_first() -> Vec<StructuralVariant> {
         vec![
             Self::named_variant(),
             Self::application_variant(),
@@ -65,57 +65,54 @@ impl TypeReference {
 
     fn from_block_application_first(block: &Block) -> Result<Self, StructuralMacroError> {
         let candidate = nota_next::MacroCandidate::from_block(Self::structural_position(), block);
-        let registry = nota_next::MacroRegistry::new(Self::variants_application_first())
-            .map_err(StructuralMacroError::Registry)?;
-        let matched = registry
+        let variants = StructuralVariantSet::new(
+            Self::structural_position(),
+            Self::variants_application_first(),
+        )
+        .map_err(StructuralMacroError::StructuralVariant)?;
+        let matched = variants
             .dispatch(&candidate)
-            .map_err(StructuralMacroError::Registry)?;
+            .map_err(StructuralMacroError::StructuralVariant)?;
         Self::from_structural_match(matched).map_err(StructuralMacroError::Decode)
     }
 
-    fn named_variant() -> MacroNodeDefinition {
-        BlockShape::pascal_atom(Some(CaptureName::new("type_name"))).into_macro_node(
-            "named type",
-            Self::structural_position(),
-            "PascalCase type name atom",
-        )
+    fn named_variant() -> StructuralVariant {
+        BlockShape::pascal_atom(Some(CaptureName::new("type_name")))
+            .into_structural_variant("named type", "PascalCase type name atom")
     }
 
-    fn optional_variant() -> MacroNodeDefinition {
+    fn optional_variant() -> StructuralVariant {
         BlockShape::headed_parenthesis(
             "Optional",
             MacroObjectCount::Exact(2),
             Some(CaptureName::new("signature")),
         )
-        .into_macro_node(
+        .into_structural_variant(
             "optional reference",
-            Self::structural_position(),
             "parenthesized Optional head carrying one reference argument",
         )
     }
 
-    fn vector_variant() -> MacroNodeDefinition {
+    fn vector_variant() -> StructuralVariant {
         BlockShape::headed_parenthesis(
             "Vec",
             MacroObjectCount::Exact(2),
             Some(CaptureName::new("signature")),
         )
-        .into_macro_node(
+        .into_structural_variant(
             "vector reference",
-            Self::structural_position(),
             "parenthesized Vec head carrying one reference argument",
         )
     }
 
-    fn application_variant() -> MacroNodeDefinition {
+    fn application_variant() -> StructuralVariant {
         BlockShape::pascal_headed_parenthesis(
             MacroObjectCount::Exact(2),
             CaptureName::new("constructor"),
             Some(CaptureName::new("signature")),
         )
-        .into_macro_node(
+        .into_structural_variant(
             "application reference",
-            Self::structural_position(),
             "parenthesized PascalCase constructor carrying one reference argument",
         )
     }
@@ -134,7 +131,7 @@ impl StructuralMacroNode for TypeReference {
         PositionPredicate::named("TypeReference")
     }
 
-    fn structural_variants() -> Vec<MacroNodeDefinition> {
+    fn structural_variants() -> Vec<StructuralVariant> {
         vec![
             Self::named_variant(),
             Self::optional_variant(),
@@ -216,7 +213,7 @@ impl<'match_value, 'block> TypeReferenceMatch<'match_value, 'block> {
 enum StructuralMacroError {
     Parse(String),
     ExpectedSingleRoot { found: usize },
-    Registry(nota_next::MacroError),
+    StructuralVariant(nota_next::StructuralVariantError),
     Decode(TypeReferenceError),
     StructuralMacro(nota_next::StructuralMacroError<TypeReferenceError>),
 }
@@ -231,7 +228,7 @@ impl fmt::Display for StructuralMacroError {
                     "expected exactly one NOTA root object, found {found}"
                 )
             }
-            Self::Registry(error) => write!(formatter, "{error}"),
+            Self::StructuralVariant(error) => write!(formatter, "{error}"),
             Self::Decode(error) => write!(formatter, "{error}"),
             Self::StructuralMacro(error) => write!(formatter, "{error}"),
         }

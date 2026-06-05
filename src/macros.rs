@@ -289,6 +289,14 @@ impl BlockShape {
     ) -> MacroNodeDefinition {
         MacroNodeDefinition::new(name, position, self.into_pattern(), expected)
     }
+
+    pub fn into_structural_variant(
+        self,
+        name: impl Into<String>,
+        expected: impl Into<String>,
+    ) -> StructuralVariant {
+        StructuralVariant::new(name, self.into_pattern(), expected)
+    }
 }
 
 #[derive(
@@ -339,6 +347,139 @@ impl Pattern {
         } else {
             None
         }
+    }
+}
+
+#[derive(
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    nota_next::NotaDecode,
+    nota_next::NotaEncode,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+)]
+pub struct StructuralVariant {
+    name: String,
+    pattern: Pattern,
+    expected: String,
+}
+
+impl StructuralVariant {
+    pub fn new(name: impl Into<String>, pattern: Pattern, expected: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            pattern,
+            expected: expected.into(),
+        }
+    }
+
+    pub fn from_macro_node(node: MacroNodeDefinition) -> Self {
+        Self {
+            name: node.name,
+            pattern: node.pattern,
+            expected: node.expected,
+        }
+    }
+
+    pub fn from_shape(
+        name: impl Into<String>,
+        shape: BlockShape,
+        expected: impl Into<String>,
+    ) -> Self {
+        shape.into_structural_variant(name, expected)
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn pattern(&self) -> &Pattern {
+        &self.pattern
+    }
+
+    pub fn expected(&self) -> &str {
+        &self.expected
+    }
+
+    pub fn into_macro_node(self, position: PositionPredicate) -> MacroNodeDefinition {
+        MacroNodeDefinition::new(self.name, position, self.pattern, self.expected)
+    }
+
+    pub fn matches<'block>(&self, blocks: &[&'block Block]) -> Option<MacroMatch<'block>> {
+        self.pattern
+            .matches(blocks)
+            .map(|captures| MacroMatch::new(self.name.clone(), captures))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct StructuralVariantSet {
+    position: PositionPredicate,
+    variants: Vec<StructuralVariant>,
+}
+
+impl StructuralVariantSet {
+    pub fn new(
+        position: PositionPredicate,
+        variants: Vec<StructuralVariant>,
+    ) -> Result<Self, StructuralVariantError> {
+        let set = Self { position, variants };
+        set.validate_no_silent_conflicts()?;
+        Ok(set)
+    }
+
+    pub fn unchecked(position: PositionPredicate, variants: Vec<StructuralVariant>) -> Self {
+        Self { position, variants }
+    }
+
+    pub fn position(&self) -> &PositionPredicate {
+        &self.position
+    }
+
+    pub fn variants(&self) -> &[StructuralVariant] {
+        &self.variants
+    }
+
+    pub fn dispatch<'block>(
+        &self,
+        candidate: &MacroCandidate<'block>,
+    ) -> Result<MacroMatch<'block>, StructuralVariantError> {
+        let mut tried = Vec::new();
+        let mut expected = Vec::new();
+        if self.position() == candidate.position() {
+            for variant in self.variants() {
+                tried.push(variant.name().to_owned());
+                expected.push(format!("{}: {}", variant.name(), variant.expected()));
+                if let Some(matched) = variant.matches(candidate.blocks()) {
+                    return Ok(matched);
+                }
+            }
+        }
+        Err(StructuralVariantError::NoMatch {
+            position: candidate.position().describe(),
+            tried,
+            expected,
+            found: candidate.shape_description(),
+        })
+    }
+
+    pub fn validate_no_silent_conflicts(&self) -> Result<(), StructuralVariantError> {
+        for (index, first) in self.variants.iter().enumerate() {
+            for second in self.variants.iter().skip(index + 1) {
+                if first.pattern() == second.pattern() {
+                    return Err(StructuralVariantError::Conflict(
+                        StructuralVariantConflict::new(
+                            first.name().to_owned(),
+                            second.name().to_owned(),
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -944,12 +1085,69 @@ impl fmt::Display for MacroError {
 
 impl std::error::Error for MacroError {}
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructuralVariantConflict {
+    first: String,
+    second: String,
+}
+
+impl StructuralVariantConflict {
+    pub fn new(first: String, second: String) -> Self {
+        Self { first, second }
+    }
+
+    pub fn first(&self) -> &str {
+        &self.first
+    }
+
+    pub fn second(&self) -> &str {
+        &self.second
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum StructuralVariantError {
+    NoMatch {
+        position: String,
+        tried: Vec<String>,
+        expected: Vec<String>,
+        found: String,
+    },
+    Conflict(StructuralVariantConflict),
+}
+
+impl fmt::Display for StructuralVariantError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoMatch {
+                position,
+                tried,
+                expected,
+                found,
+            } => write!(
+                formatter,
+                "no structural variant matched at {position}; tried [{}]; expected [{}]; found {found}",
+                tried.join(", "),
+                expected.join(", ")
+            ),
+            Self::Conflict(conflict) => write!(
+                formatter,
+                "structural variant conflict between {} and {}",
+                conflict.first(),
+                conflict.second()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for StructuralVariantError {}
+
 pub trait StructuralMacroNode: Sized {
     type Error;
 
     fn structural_position() -> PositionPredicate;
 
-    fn structural_variants() -> Vec<MacroNodeDefinition>;
+    fn structural_variants() -> Vec<StructuralVariant>;
 
     fn from_structural_match(matched: MacroMatch<'_>) -> Result<Self, Self::Error>;
 
@@ -976,9 +1174,10 @@ pub trait StructuralMacroNode: Sized {
     fn from_structural_candidate(
         candidate: MacroCandidate<'_>,
     ) -> Result<Self, StructuralMacroError<Self::Error>> {
-        let registry = MacroRegistry::new(Self::structural_variants())
-            .map_err(StructuralMacroError::Dispatch)?;
-        let matched = registry
+        let variants =
+            StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
+                .map_err(StructuralMacroError::Dispatch)?;
+        let matched = variants
             .dispatch(&candidate)
             .map_err(StructuralMacroError::Dispatch)?;
         Self::from_structural_match(matched).map_err(StructuralMacroError::MatchedNode)
@@ -987,7 +1186,7 @@ pub trait StructuralMacroNode: Sized {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StructuralMacroError<NodeError> {
-    Dispatch(MacroError),
+    Dispatch(StructuralVariantError),
     MatchedNode(NodeError),
 }
 
