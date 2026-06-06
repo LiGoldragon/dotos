@@ -81,28 +81,6 @@
   result for exploration and diagnostics, but it is no longer the typed-node
   trait boundary.
 
-## At-Binding Syntax
-
-The parser understands name-first sigil binding at an open delimiter:
-
-- `Name@{ ... }` parses as a named struct-like declaration block.
-- `Name@[ ... ]` parses as a named enum-like declaration block.
-- `name@(Reference ...)` parses as a normal two-object member binding whose
-  reference remains structural.
-- `name@Type` remains an atom for the schema layer to read as a simple member
-  binding.
-
-This is syntax-layer structure only. The `@` marker is not a macro-call sigil;
-macro calls remain values read against an expected schema-node type. The root
-object of a `.schema` file is still implicit from the filename, so the root
-does not carry a `Name@{...}` wrapper.
-
-The recursive pipe delimiter forms remain available as low-level compatibility
-blocks and for older schema fixtures. `Name@(...)` remains accepted as a
-compatibility enum declaration shape, but authored schema should use
-`Name@[...]` so parentheses stay available for composite type references and
-schema macro calls.
-
 ## Boundary
 
 This crate does not know what a schema type, field, declaration, enum, macro,

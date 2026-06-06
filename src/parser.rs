@@ -683,119 +683,8 @@ impl<'source> Parser<'source> {
                 self.parse_pipe_delimited(Delimiter::PipeBrace)
             }
             Some('{') => self.parse_delimited(Delimiter::Brace),
-            Some(_) => self.parse_atom_or_at_binding(),
+            Some(_) => Ok(self.parse_atom()),
             None => Ok(self.parse_atom()),
-        }
-    }
-
-    fn parse_atom_or_at_binding(&mut self) -> Result<Block, NotaError> {
-        let start = self.cursor.position();
-        let atom = self.parse_atom_until_at_binding();
-        let text = atom
-            .atom()
-            .expect("parse_atom_until_at_binding always returns atom")
-            .text()
-            .to_owned();
-        if text.is_empty() {
-            return Ok(self.parse_atom());
-        }
-        if self.peek() != Some('@') {
-            return Ok(atom);
-        }
-        let Some(next) = self.peek_next() else {
-            return Ok(atom);
-        };
-        if !matches!(next, '(' | '[' | '{') {
-            return Ok(atom);
-        }
-        if opening_starts_declaration(&text, next) {
-            self.parse_named_declaration_binding(start, atom, next)
-        } else {
-            self.parse_named_member_binding(start, atom, next)
-        }
-    }
-
-    fn parse_named_declaration_binding(
-        &mut self,
-        start: SourcePosition,
-        name: Block,
-        opening: char,
-    ) -> Result<Block, NotaError> {
-        let delimiter = match opening {
-            '[' => Delimiter::PipeParenthesis,
-            '{' => Delimiter::PipeBrace,
-            _ => unreachable!("caller checked at-binding delimiter"),
-        };
-        let (delimiter, closing) = delimiter.with_source_closing(opening);
-        self.parse_at_delimited(start, delimiter, closing, vec![name])
-    }
-
-    fn parse_named_member_binding(
-        &mut self,
-        start: SourcePosition,
-        name: Block,
-        opening: char,
-    ) -> Result<Block, NotaError> {
-        let reference_delimiter = match opening {
-            '(' => Delimiter::Parenthesis,
-            '[' => Delimiter::SquareBracket,
-            '{' => Delimiter::Brace,
-            _ => unreachable!("caller checked at-binding delimiter"),
-        };
-        self.bump();
-        let reference = self.parse_delimited(reference_delimiter)?;
-        let end = reference.source_span().end;
-        let root_objects = if opening == '(' && reference.holds_single_root_object() {
-            vec![
-                name,
-                reference
-                    .root_object_at(0)
-                    .expect("single root object checked")
-                    .clone(),
-            ]
-        } else {
-            vec![name, reference]
-        };
-        Ok(Block::Delimited {
-            delimiter: Delimiter::Parenthesis,
-            span: SourceSpan { start, end },
-            root_objects,
-        })
-    }
-
-    fn parse_at_delimited(
-        &mut self,
-        start: SourcePosition,
-        delimiter: Delimiter,
-        closing: char,
-        mut root_objects: Vec<Block>,
-    ) -> Result<Block, NotaError> {
-        self.bump();
-        self.bump();
-        loop {
-            self.skip_spacing();
-            let Some(character) = self.peek() else {
-                return Err(NotaError::UnclosedDelimiter {
-                    delimiter,
-                    position: start,
-                });
-            };
-            if character == closing {
-                self.bump();
-                let end = self.cursor.position();
-                return Ok(Block::Delimited {
-                    delimiter,
-                    span: SourceSpan { start, end },
-                    root_objects,
-                });
-            }
-            if Delimiter::from_closing(character).is_some() {
-                return Err(NotaError::UnexpectedClose {
-                    found: character,
-                    position: self.cursor.position(),
-                });
-            }
-            root_objects.push(self.parse_object()?);
         }
     }
 
@@ -885,14 +774,6 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_atom(&mut self) -> Block {
-        self.parse_atom_with_stop_at_binding(false)
-    }
-
-    fn parse_atom_until_at_binding(&mut self) -> Block {
-        self.parse_atom_with_stop_at_binding(true)
-    }
-
-    fn parse_atom_with_stop_at_binding(&mut self, stop_at_binding: bool) -> Block {
         let start = self.cursor.position();
         while let Some(character) = self.peek() {
             if character.is_whitespace()
@@ -900,11 +781,6 @@ impl<'source> Parser<'source> {
                 || Delimiter::from_opening(character).is_some()
                 || Delimiter::from_closing(character).is_some()
                 || self.at_pipe_delimiter_close()
-                || (stop_at_binding
-                    && character == '@'
-                    && self
-                        .peek_next()
-                        .is_some_and(|next| matches!(next, '(' | '[' | '{')))
             {
                 break;
             }
@@ -966,35 +842,6 @@ impl<'source> Parser<'source> {
             self.cursor.column += 1;
         }
         Some(character)
-    }
-}
-
-fn opening_starts_declaration(name: &str, opening: char) -> bool {
-    matches!(opening, '[' | '{')
-        && name
-            .split(':')
-            .next_back()
-            .unwrap_or(name)
-            .chars()
-            .next()
-            .is_some_and(|character| character.is_ascii_uppercase())
-}
-
-trait AtBindingOpening {
-    fn with_source_closing(self, opening: char) -> (Self, char)
-    where
-        Self: Sized;
-}
-
-impl AtBindingOpening for Delimiter {
-    fn with_source_closing(self, opening: char) -> (Self, char) {
-        let closing = match opening {
-            '(' => ')',
-            '[' => ']',
-            '{' => '}',
-            _ => unreachable!("caller checked at-binding delimiter"),
-        };
-        (self, closing)
     }
 }
 
