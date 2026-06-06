@@ -561,3 +561,72 @@ enum MisorderedDerivedReference {
     #[shape(head = "Optional", arity = 2)]
     Optional(Box<MisorderedDerivedReference>),
 }
+
+#[test]
+fn structural_macro_node_keyword_field_discriminates_inner_marker() {
+    let opens = "(Watch WatchRequest opens RecordStream)";
+    let decoded = DerivedVariantSignature::from_structural_nota(opens).expect("opens form decodes");
+    assert_eq!(
+        decoded,
+        DerivedVariantSignature::Streaming(
+            DerivedTypeName("Watch".to_owned()),
+            DerivedTypeName("WatchRequest".to_owned()),
+            DerivedRelationKeyword::Opens,
+            DerivedTypeName("RecordStream".to_owned()),
+        )
+    );
+    assert_eq!(decoded.to_structural_nota(), opens);
+
+    let belongs = "(RecordChanged RecordChanged belongs RecordStream)";
+    let decoded =
+        DerivedVariantSignature::from_structural_nota(belongs).expect("belongs form decodes");
+    assert_eq!(
+        decoded,
+        DerivedVariantSignature::Streaming(
+            DerivedTypeName("RecordChanged".to_owned()),
+            DerivedTypeName("RecordChanged".to_owned()),
+            DerivedRelationKeyword::Belongs,
+            DerivedTypeName("RecordStream".to_owned()),
+        )
+    );
+    assert_eq!(decoded.to_structural_nota(), belongs);
+
+    let unit = DerivedVariantSignature::from_structural_nota("Reserved").expect("unit form decodes");
+    assert_eq!(
+        unit,
+        DerivedVariantSignature::Unit(DerivedTypeName("Reserved".to_owned()))
+    );
+
+    let data =
+        DerivedVariantSignature::from_structural_nota("(Record Entry)").expect("data form decodes");
+    assert_eq!(
+        data,
+        DerivedVariantSignature::Data(
+            DerivedTypeName("Record".to_owned()),
+            DerivedTypeName("Entry".to_owned()),
+        )
+    );
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum DerivedRelationKeyword {
+    #[shape(keyword = "opens")]
+    Opens,
+    #[shape(keyword = "belongs")]
+    Belongs,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum DerivedVariantSignature {
+    #[shape(pascal_atom)]
+    Unit(DerivedTypeName),
+    #[shape(pascal_head, arity = 2)]
+    Data(DerivedTypeName, DerivedTypeName),
+    #[shape(pascal_head, arity = 4)]
+    Streaming(
+        DerivedTypeName,
+        DerivedTypeName,
+        DerivedRelationKeyword,
+        DerivedTypeName,
+    ),
+}

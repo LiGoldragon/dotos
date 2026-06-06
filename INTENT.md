@@ -26,17 +26,15 @@ and struct-like declarations.*
 symbol candidate until a schema context reads a known schema-node position as a
 tagged/data-carrying macro variant.*
 
-*Schema declarations use a sigil-based open-delimiter interface at the
-NOTA/syntax boundary: `Name@{...}` parses as a named struct-like declaration,
-`Name@[...]` parses as a named enum-like declaration, and `name@(Reference
-...)` parses as a member binding whose referenced value remains structural.
+*The `@` at-binding declaration sigil is retired. The earlier `Name@{...}`
+struct-like, `Name@[...]` enum-like, and `name@(Reference ...)` member-binding
+forms are removed; nota-next does not parse `@` as a declaration/binding sigil.
+Schema declaration meaning is carried by position and delimiter shape read
+through the typed macro-node layer, not by an `@` open-delimiter interface.
 Parentheses remain the composite/type-reference and macro-call argument shape
-for schema (`(Vec Entry)`, `(Optional Kind)`, `(Map (Key Value))`). The `@` is
-a declaration/binding sigil between a name and a delimiter, not a macro-call
-sigil. The root schema object remains implicit from the filename and does not
-need `@` or delimiters. The earlier recursive pipe delimiter support and
-`Name@(...)` enum declaration form remain compatibility surfaces for existing
-fixtures and lower layers, but they are no longer the authored schema target.*
+for schema (`(Vec Entry)`, `(Optional Kind)`, `(Map (Key Value))`). The root
+schema object remains implicit from the filename and needs no sigil or outer
+delimiter.*
 
 *NOTA owns Rust value codec shapes through shared `NotaDecode` and
 `NotaEncode` traits. The codec can read and write strings, integers, booleans,
@@ -96,14 +94,18 @@ selects a variant without exposing a registry as the design surface.*
 
 *The enum type is also the derive surface. `#[derive(StructuralMacroNode)]`
 reads per-variant `#[shape(...)]` attributes such as `pascal_atom`,
-`head = "Optional", arity = 2`, and `pascal_head, arity = 2`; the generated
-implementation lists those variants in declaration order, validates that
-later variants are still reachable, decodes the incoming structural candidate
-directly into the enum payload fields recursively, and writes the same
-structural NOTA surface back out. The derive makes the macro-node type itself
-the specification rather than making users hand-write a parser or registry.
-The low-level `MacroMatch` registry remains an exploration and diagnostics
-surface, not the required typed-node codec hook.*
+`keyword = "opens"`, `head = "Optional", arity = 2`, and
+`pascal_head, arity = 2`; the generated implementation lists those variants in
+declaration order, validates that later variants are still reachable, decodes
+the incoming structural candidate directly into the enum payload fields
+recursively, and writes the same structural NOTA surface back out. A `keyword`
+variant matches a bare literal atom and carries no fields, so an inner marker
+such as a stream-relation keyword can itself be a structural macro node decoded
+recursively from one child, discriminating sibling forms without any
+variant-name string comparison in hand-written code. The derive makes the
+macro-node type itself the specification rather than making users hand-write a
+parser or registry. The low-level `MacroMatch` registry remains an exploration
+and diagnostics surface, not the required typed-node codec hook.*
 
 The predecessor surface is the existing `nota` / `nota-codec` family. This
 repository carries the replacement track on `main`.

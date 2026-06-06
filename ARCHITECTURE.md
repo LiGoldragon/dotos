@@ -30,8 +30,11 @@
   parenthesized struct decode and `#[nota(known_root)]` document decode both
   delegate into that body implementation. It also derives
   `StructuralMacroNode` for enum types with per-variant `#[shape(...)]`
-  attributes, generating the ordered structural variant list, capture decoding,
-  and reverse structural NOTA encoding.
+  attributes (`pascal_atom`, `keyword = "..."`, `head = "...", arity = N`, and
+  `pascal_head, arity = N`), generating the ordered structural variant list,
+  recursive per-field capture decoding, and reverse structural NOTA encoding. A
+  `keyword` variant matches a bare literal atom and carries no fields, so an
+  inner marker atom can be its own recursively-decoded structural macro node.
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, direct body parsing, string formatting, and collection value
@@ -112,7 +115,7 @@ single-root-object path for ordinary values; after it matches the outer
 parentheses of a named struct, derive hands the inner root-object stream to the
 type's `NotaBodyDecode` implementation. `NotaSource::parse_document_body` is
 the file/body path for callers that already know the root type from context,
-such as a `.schema` or `.asschema` reader; it hands the document's ordered root
+such as a `.schema` reader; it hands the document's ordered root
 objects to the same body logic through `NotaDocumentDecode`. The structural
 match decides where the body begins. The expected type decides whether the body
 is read as positional struct fields, a vector stream, an enum-like variant

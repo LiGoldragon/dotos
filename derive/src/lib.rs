@@ -843,6 +843,7 @@ impl StructuralVariantDerive {
 
 enum StructuralVariantShape {
     PascalAtom,
+    Keyword { keyword: String },
     Headed { head: String, arity: usize },
     PascalHead { arity: usize },
 }
@@ -852,6 +853,7 @@ impl StructuralVariantShape {
         let mut pascal_atom = false;
         let mut pascal_head = false;
         let mut head: Option<String> = None;
+        let mut keyword: Option<String> = None;
         let mut arity: Option<usize> = None;
         let mut found = false;
         for attribute in &variant.attrs {
@@ -873,6 +875,11 @@ impl StructuralVariantShape {
                     head = Some(value.value());
                     return Ok(());
                 }
+                if meta.path.is_ident("keyword") {
+                    let value: LitStr = meta.value()?.parse()?;
+                    keyword = Some(value.value());
+                    return Ok(());
+                }
                 if meta.path.is_ident("arity") {
                     let value: LitInt = meta.value()?.parse()?;
                     arity = Some(value.base10_parse()?);
@@ -890,6 +897,9 @@ impl StructuralVariantShape {
         if pascal_atom {
             return Ok(Self::PascalAtom);
         }
+        if let Some(keyword) = keyword {
+            return Ok(Self::Keyword { keyword });
+        }
         if let Some(head) = head {
             let arity =
                 arity.ok_or_else(|| Error::new_spanned(variant, "head shape needs arity = N"))?;
@@ -902,13 +912,14 @@ impl StructuralVariantShape {
         }
         Err(Error::new_spanned(
             variant,
-            "shape must be pascal_atom, head = \"...\" with arity, or pascal_head with arity",
+            "shape must be pascal_atom, keyword = \"...\", head = \"...\" with arity, or pascal_head with arity",
         ))
     }
 
     fn check_field_count(&self, variant: &Variant, fields: usize) -> Result<(), Error> {
         let expected = match self {
             Self::PascalAtom => 1,
+            Self::Keyword { .. } => 0,
             Self::Headed { arity, .. } => arity.saturating_sub(1),
             Self::PascalHead { arity } => *arity,
         };
@@ -925,6 +936,10 @@ impl StructuralVariantShape {
         match self {
             Self::PascalAtom => quote! {
                 ::nota_next::BlockShape::pascal_atom(Some(::nota_next::CaptureName::new("field_0")))
+                    .into_structural_variant(#variant_name, #expected)
+            },
+            Self::Keyword { keyword } => quote! {
+                ::nota_next::BlockShape::literal(#keyword)
                     .into_structural_variant(#variant_name, #expected)
             },
             Self::Headed { head, arity } => {
@@ -955,6 +970,7 @@ impl StructuralVariantShape {
     fn expected_text(&self, variant_name: &str) -> String {
         match self {
             Self::PascalAtom => format!("{variant_name}: PascalCase atom"),
+            Self::Keyword { keyword } => format!("{variant_name}: literal {keyword} atom"),
             Self::Headed { head, arity } => {
                 format!("{variant_name}: parenthesized {head} head with arity {arity}")
             }
@@ -967,6 +983,7 @@ impl StructuralVariantShape {
     fn direct_match_condition(&self) -> TokenStreamTwo {
         match self {
             Self::PascalAtom => quote!(block.qualifies_as_pascal_case_symbol()),
+            Self::Keyword { keyword } => quote!(block.demote_to_string() == Some(#keyword)),
             Self::Headed { head, arity } => {
                 let arity = *arity;
                 quote! {
@@ -997,6 +1014,7 @@ impl StructuralVariantShape {
     ) -> TokenStreamTwo {
         match self {
             Self::PascalAtom => quote!(block),
+            Self::Keyword { .. } => quote!(block),
             Self::Headed { .. } => {
                 let child_index = field_index + 1;
                 quote! {
@@ -1039,6 +1057,7 @@ impl StructuralVariantShape {
                 let only = &bindings[0];
                 quote!(::nota_next::StructuralMacroNode::to_structural_nota(#only))
             }
+            Self::Keyword { keyword } => quote!(#keyword.to_owned()),
             Self::Headed { head, .. } => {
                 let format_literal = LitStr::new(
                     &self.headed_format(head, bindings.len()),
