@@ -591,7 +591,8 @@ fn structural_macro_node_keyword_field_discriminates_inner_marker() {
     );
     assert_eq!(decoded.to_structural_nota(), belongs);
 
-    let unit = DerivedVariantSignature::from_structural_nota("Reserved").expect("unit form decodes");
+    let unit =
+        DerivedVariantSignature::from_structural_nota("Reserved").expect("unit form decodes");
     assert_eq!(
         unit,
         DerivedVariantSignature::Unit(DerivedTypeName("Reserved".to_owned()))

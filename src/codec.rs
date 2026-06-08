@@ -348,17 +348,43 @@ impl<'block> NotaBlock<'block> {
     }
 
     pub fn parse_integer(&self) -> Result<u64, NotaDecodeError> {
-        let value = self
-            .block
-            .demote_to_string()
-            .ok_or(NotaDecodeError::ExpectedAtom {
-                type_name: "Integer",
-            })?;
+        let value = self.parse_integer_text("Integer")?;
         value
             .parse::<u64>()
             .map_err(|_| NotaDecodeError::InvalidInteger {
                 value: value.to_owned(),
             })
+    }
+
+    pub fn parse_u16(&self) -> Result<u16, NotaDecodeError> {
+        let value = self.parse_integer()?;
+        u16::try_from(value).map_err(|_| NotaDecodeError::InvalidInteger {
+            value: value.to_string(),
+        })
+    }
+
+    pub fn parse_u32(&self) -> Result<u32, NotaDecodeError> {
+        let value = self.parse_integer()?;
+        u32::try_from(value).map_err(|_| NotaDecodeError::InvalidInteger {
+            value: value.to_string(),
+        })
+    }
+
+    pub fn parse_signed_integer(&self) -> Result<i64, NotaDecodeError> {
+        let value = self.parse_integer_text("SignedInteger")?;
+        value
+            .parse::<i64>()
+            .map_err(|_| NotaDecodeError::InvalidInteger {
+                value: value.to_owned(),
+            })
+    }
+
+    fn parse_integer_text(&self, type_name: &'static str) -> Result<&'block str, NotaDecodeError> {
+        let value = self
+            .block
+            .demote_to_string()
+            .ok_or(NotaDecodeError::ExpectedAtom { type_name })?;
+        Ok(value)
     }
 
     pub fn parse_boolean(&self) -> Result<bool, NotaDecodeError> {
@@ -510,6 +536,42 @@ impl NotaDecode for u64 {
 }
 
 impl NotaEncode for u64 {
+    fn to_nota(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl NotaDecode for u16 {
+    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
+        NotaBlock::new(block).parse_u16()
+    }
+}
+
+impl NotaEncode for u16 {
+    fn to_nota(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl NotaDecode for u32 {
+    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
+        NotaBlock::new(block).parse_u32()
+    }
+}
+
+impl NotaEncode for u32 {
+    fn to_nota(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl NotaDecode for i64 {
+    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
+        NotaBlock::new(block).parse_signed_integer()
+    }
+}
+
+impl NotaEncode for i64 {
     fn to_nota(&self) -> String {
         self.to_string()
     }

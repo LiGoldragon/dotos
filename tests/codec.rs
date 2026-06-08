@@ -20,6 +20,24 @@ fn codec_decodes_and_encodes_scalars() {
             .expect("integer decodes"),
         42
     );
+    assert_eq!(
+        NotaSource::new("65535")
+            .parse::<u16>()
+            .expect("u16 decodes"),
+        65_535
+    );
+    assert_eq!(
+        NotaSource::new("4294967295")
+            .parse::<u32>()
+            .expect("u32 decodes"),
+        4_294_967_295
+    );
+    assert_eq!(
+        NotaSource::new("-128")
+            .parse::<i64>()
+            .expect("signed integer decodes"),
+        -128
+    );
     assert!(
         NotaSource::new("True")
             .parse::<bool>()
@@ -31,7 +49,22 @@ fn codec_decodes_and_encodes_scalars() {
         "[schema owns strings]"
     );
     assert_eq!(42_u64.to_nota(), "42");
+    assert_eq!(65_535_u16.to_nota(), "65535");
+    assert_eq!(4_294_967_295_u32.to_nota(), "4294967295");
+    assert_eq!((-128_i64).to_nota(), "-128");
     assert_eq!(false.to_nota(), "False");
+}
+
+#[test]
+fn codec_rejects_out_of_range_integer_widths() {
+    let error = NotaSource::new("65536")
+        .parse::<u16>()
+        .expect_err("u16 range rejects");
+
+    assert!(
+        error.to_string().contains("invalid integer 65536"),
+        "error was {error}"
+    );
 }
 
 #[test]
