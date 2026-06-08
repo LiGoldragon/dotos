@@ -27,16 +27,32 @@ fn codec_decodes_and_encodes_scalars() {
         65_535
     );
     assert_eq!(
+        NotaSource::new("255").parse::<u8>().expect("u8 decodes"),
+        255
+    );
+    assert_eq!(
         NotaSource::new("4294967295")
             .parse::<u32>()
             .expect("u32 decodes"),
         4_294_967_295
     );
     assert_eq!(
+        NotaSource::new("-2147483648")
+            .parse::<i32>()
+            .expect("i32 decodes"),
+        -2_147_483_648
+    );
+    assert_eq!(
         NotaSource::new("-128")
             .parse::<i64>()
             .expect("signed integer decodes"),
         -128
+    );
+    assert_eq!(
+        NotaSource::new("-122.3")
+            .parse::<f64>()
+            .expect("float decodes"),
+        -122.3
     );
     assert!(
         NotaSource::new("True")
@@ -49,9 +65,12 @@ fn codec_decodes_and_encodes_scalars() {
         "[schema owns strings]"
     );
     assert_eq!(42_u64.to_nota(), "42");
+    assert_eq!(255_u8.to_nota(), "255");
     assert_eq!(65_535_u16.to_nota(), "65535");
     assert_eq!(4_294_967_295_u32.to_nota(), "4294967295");
+    assert_eq!((-2_147_483_648_i32).to_nota(), "-2147483648");
     assert_eq!((-128_i64).to_nota(), "-128");
+    assert_eq!((-122.3_f64).to_nota(), "-122.3");
     assert_eq!(false.to_nota(), "False");
 }
 
@@ -63,6 +82,36 @@ fn codec_rejects_out_of_range_integer_widths() {
 
     assert!(
         error.to_string().contains("invalid integer 65536"),
+        "error was {error}"
+    );
+
+    let error = NotaSource::new("256")
+        .parse::<u8>()
+        .expect_err("u8 range rejects");
+
+    assert!(
+        error.to_string().contains("invalid integer 256"),
+        "error was {error}"
+    );
+
+    let error = NotaSource::new("2147483648")
+        .parse::<i32>()
+        .expect_err("i32 range rejects");
+
+    assert!(
+        error.to_string().contains("invalid integer 2147483648"),
+        "error was {error}"
+    );
+}
+
+#[test]
+fn codec_rejects_invalid_float_text() {
+    let error = NotaSource::new("not-a-float")
+        .parse::<f64>()
+        .expect_err("float grammar rejects");
+
+    assert!(
+        error.to_string().contains("invalid Float"),
         "error was {error}"
     );
 }

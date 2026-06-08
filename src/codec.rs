@@ -373,6 +373,13 @@ impl<'block> NotaBlock<'block> {
         })
     }
 
+    pub fn parse_u8(&self) -> Result<u8, NotaDecodeError> {
+        let value = self.parse_integer()?;
+        u8::try_from(value).map_err(|_| NotaDecodeError::InvalidInteger {
+            value: value.to_string(),
+        })
+    }
+
     pub fn parse_u32(&self) -> Result<u32, NotaDecodeError> {
         let value = self.parse_integer()?;
         u32::try_from(value).map_err(|_| NotaDecodeError::InvalidInteger {
@@ -386,6 +393,24 @@ impl<'block> NotaBlock<'block> {
             .parse::<i64>()
             .map_err(|_| NotaDecodeError::InvalidInteger {
                 value: value.to_owned(),
+            })
+    }
+
+    pub fn parse_i32(&self) -> Result<i32, NotaDecodeError> {
+        let value = self.parse_signed_integer()?;
+        i32::try_from(value).map_err(|_| NotaDecodeError::InvalidInteger {
+            value: value.to_string(),
+        })
+    }
+
+    pub fn parse_float(&self) -> Result<f64, NotaDecodeError> {
+        let value = self.parse_integer_text("Float")?;
+        value
+            .parse::<f64>()
+            .map_err(|_| NotaDecodeError::InvalidValue {
+                type_name: "Float",
+                value: value.to_owned(),
+                reason: "expected a finite or non-finite Rust f64 literal".to_owned(),
             })
     }
 
@@ -551,6 +576,18 @@ impl NotaEncode for u64 {
     }
 }
 
+impl NotaDecode for u8 {
+    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
+        NotaBlock::new(block).parse_u8()
+    }
+}
+
+impl NotaEncode for u8 {
+    fn to_nota(&self) -> String {
+        self.to_string()
+    }
+}
+
 impl NotaDecode for u16 {
     fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
         NotaBlock::new(block).parse_u16()
@@ -575,6 +612,18 @@ impl NotaEncode for u32 {
     }
 }
 
+impl NotaDecode for i32 {
+    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
+        NotaBlock::new(block).parse_i32()
+    }
+}
+
+impl NotaEncode for i32 {
+    fn to_nota(&self) -> String {
+        self.to_string()
+    }
+}
+
 impl NotaDecode for i64 {
     fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
         NotaBlock::new(block).parse_signed_integer()
@@ -582,6 +631,18 @@ impl NotaDecode for i64 {
 }
 
 impl NotaEncode for i64 {
+    fn to_nota(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl NotaDecode for f64 {
+    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
+        NotaBlock::new(block).parse_float()
+    }
+}
+
+impl NotaEncode for f64 {
     fn to_nota(&self) -> String {
         self.to_string()
     }
