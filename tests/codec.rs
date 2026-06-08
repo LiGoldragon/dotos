@@ -68,6 +68,20 @@ fn codec_rejects_out_of_range_integer_widths() {
 }
 
 #[test]
+fn codec_renders_domain_value_validation_errors() {
+    let error = NotaDecodeError::InvalidValue {
+        type_name: "Keygrip",
+        value: "abc".to_owned(),
+        reason: "expected 40 hex chars".to_owned(),
+    };
+
+    assert_eq!(
+        error.to_string(),
+        "invalid Keygrip \"abc\": expected 40 hex chars"
+    );
+}
+
+#[test]
 fn codec_decodes_and_encodes_collection_values() {
     let vector = NotaSource::new("[alpha beta gamma]")
         .parse::<Vec<String>>()

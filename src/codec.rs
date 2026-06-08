@@ -28,6 +28,11 @@ pub enum NotaDecodeError {
     InvalidInteger {
         value: String,
     },
+    InvalidValue {
+        type_name: &'static str,
+        value: String,
+        reason: String,
+    },
 }
 
 impl fmt::Display for NotaDecodeError {
@@ -61,6 +66,11 @@ impl fmt::Display for NotaDecodeError {
                 write!(formatter, "unknown {enum_name} variant {variant}")
             }
             Self::InvalidInteger { value } => write!(formatter, "invalid integer {value}"),
+            Self::InvalidValue {
+                type_name,
+                value,
+                reason,
+            } => write!(formatter, "invalid {type_name} {value:?}: {reason}"),
         }
     }
 }
