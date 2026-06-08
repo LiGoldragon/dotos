@@ -188,7 +188,7 @@ impl StructDerive {
                 let document_impl = if self.attributes.known_root() {
                     quote! {
                         impl #implementation_generics ::nota_next::NotaDocumentDecode for #name #type_generics #where_clause {
-                            fn from_nota_document_body(body: &::nota_next::NotaDocumentBody<'_>) -> Result<Self, ::nota_next::NotaDecodeError> {
+                            fn from_nota_document_body(body: &::nota_next::NotaDocumentBody<'_>) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
                                 Self::from_body_objects(body.root_objects())
                             }
                         }
@@ -198,7 +198,7 @@ impl StructDerive {
                 };
                 quote! {
                     impl #implementation_generics #name #type_generics #where_clause {
-                        pub fn from_body_objects(objects: &[::nota_next::Block]) -> Result<Self, ::nota_next::NotaDecodeError> {
+                        pub fn from_body_objects(objects: &[::nota_next::Block]) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
                             if objects.len() != #field_count {
                                 return Err(::nota_next::NotaDecodeError::ExpectedRootCount {
                                     type_name: #type_name,
@@ -213,12 +213,12 @@ impl StructDerive {
                         }
                     }
                     impl #implementation_generics ::nota_next::NotaBodyDecode for #name #type_generics #where_clause {
-                        fn from_nota_body(body: &::nota_next::NotaBody<'_>) -> Result<Self, ::nota_next::NotaDecodeError> {
+                        fn from_nota_body(body: &::nota_next::NotaBody<'_>) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
                             Self::from_body_objects(body.root_objects())
                         }
                     }
                     impl #implementation_generics ::nota_next::NotaDecode for #name #type_generics #where_clause {
-                        fn from_nota_block(block: &::nota_next::Block) -> Result<Self, ::nota_next::NotaDecodeError> {
+                        fn from_nota_block(block: &::nota_next::Block) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
                             let body = ::nota_next::NotaBlock::new(block).expect_body(
                                 ::nota_next::Delimiter::Parenthesis,
                                 #type_name,
@@ -233,7 +233,7 @@ impl StructDerive {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
                     impl #implementation_generics ::nota_next::NotaDecode for #name #type_generics #where_clause {
-                        fn from_nota_block(block: &::nota_next::Block) -> Result<Self, ::nota_next::NotaDecodeError> {
+                        fn from_nota_block(block: &::nota_next::Block) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
                             Ok(Self(<#field_type as ::nota_next::NotaDecode>::from_nota_block(block)?))
                         }
                     }
@@ -412,7 +412,7 @@ impl EnumDerive {
             .map(|variant| PayloadVariantDecode::new(&name, variant).arm());
         quote! {
             impl #implementation_generics ::nota_next::NotaBodyDecode for #name #type_generics #where_clause {
-                fn from_nota_body(body: &::nota_next::NotaBody<'_>) -> Result<Self, ::nota_next::NotaDecodeError> {
+                fn from_nota_body(body: &::nota_next::NotaBody<'_>) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
                     let root_objects = body.root_objects();
                     if root_objects.len() == 1 {
                         if let Some(variant) = root_objects[0].demote_to_string() {
@@ -439,7 +439,7 @@ impl EnumDerive {
                 }
             }
             impl #implementation_generics ::nota_next::NotaDecode for #name #type_generics #where_clause {
-                fn from_nota_block(block: &::nota_next::Block) -> Result<Self, ::nota_next::NotaDecodeError> {
+                fn from_nota_block(block: &::nota_next::Block) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
                     if block.demote_to_string().is_some() {
                         let root_objects = ::std::slice::from_ref(block);
                         let body = ::nota_next::NotaBody::new(root_objects);
@@ -695,7 +695,7 @@ impl StructuralDerive {
                     ]
                 }
 
-                fn from_structural_block(block: &::nota_next::Block) -> Result<Self, ::nota_next::StructuralMacroError<Self::Error>> {
+                fn from_structural_block(block: &::nota_next::Block) -> ::std::result::Result<Self, ::nota_next::StructuralMacroError<Self::Error>> {
                     let variants =
                         ::nota_next::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
                             .map_err(::nota_next::StructuralMacroError::Dispatch)?;
@@ -712,7 +712,7 @@ impl StructuralDerive {
                     }
                 }
 
-                fn from_structural_candidate(candidate: ::nota_next::MacroCandidate<'_>) -> Result<Self, ::nota_next::StructuralMacroError<Self::Error>> {
+                fn from_structural_candidate(candidate: ::nota_next::MacroCandidate<'_>) -> ::std::result::Result<Self, ::nota_next::StructuralMacroError<Self::Error>> {
                     if let [block] = candidate.blocks() {
                         return Self::from_structural_block(block);
                     }
@@ -787,7 +787,7 @@ impl StructuralVariantDerive {
         let constructor = self.direct_decode_constructor(&variant_text);
         quote! {
             if #condition {
-                return (|| -> Result<Self, Self::Error> {
+                return (|| -> ::std::result::Result<Self, Self::Error> {
                     Ok(#constructor)
                 })()
                 .map_err(::nota_next::StructuralMacroError::MatchedNode);

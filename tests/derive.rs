@@ -211,3 +211,46 @@ fn derive_body_parser_validates_field_count() {
         .expect_err("four-object body cannot fill three-field struct");
     assert!(error.to_string().contains("Entry"), "error was {error}");
 }
+
+mod local_result_alias {
+    use nota_next::{NotaDecode, NotaEncode, NotaSource};
+
+    type Result<Value> = std::result::Result<Value, String>;
+
+    fn local_alias_is_in_scope() -> Result<()> {
+        Ok(())
+    }
+
+    #[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+    struct AliasedRecord {
+        name: String,
+        count: u16,
+    }
+
+    #[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+    enum AliasedRequest {
+        Ping,
+        Record(AliasedRecord),
+    }
+
+    #[test]
+    fn derive_generated_code_ignores_local_result_alias() {
+        local_alias_is_in_scope().expect("local alias helper returns");
+        let record = NotaSource::new("([schema] 7)")
+            .parse::<AliasedRecord>()
+            .expect("record decodes despite local Result alias");
+        let request = NotaSource::new("(Record ([schema] 7))")
+            .parse::<AliasedRequest>()
+            .expect("enum decodes despite local Result alias");
+
+        assert_eq!(
+            record,
+            AliasedRecord {
+                name: "schema".to_owned(),
+                count: 7,
+            }
+        );
+        assert_eq!(request, AliasedRequest::Record(record));
+        assert_eq!(AliasedRequest::Ping.to_nota(), "Ping");
+    }
+}
