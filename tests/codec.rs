@@ -64,6 +64,18 @@ fn codec_decodes_and_encodes_scalars() {
         "schema owns strings".to_owned().to_nota(),
         "[schema owns strings]"
     );
+    let bracket_safe = "text containing [brackets] and a closing pipe marker |]".to_owned();
+    let encoded = bracket_safe.to_nota();
+    assert_eq!(
+        encoded,
+        "[||text containing [brackets] and a closing pipe marker |]||]"
+    );
+    assert_eq!(
+        NotaSource::new(&encoded)
+            .parse::<String>()
+            .expect("bracket-safe string decodes"),
+        bracket_safe
+    );
     assert_eq!(42_u64.to_nota(), "42");
     assert_eq!(255_u8.to_nota(), "255");
     assert_eq!(65_535_u16.to_nota(), "65535");

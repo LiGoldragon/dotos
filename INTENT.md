@@ -17,10 +17,13 @@ only: it records delimiter/atom shape and child counts so higher layers can
 triage before semantic lowering.*
 
 *Square brackets are vectors. Pipe-square `[|...|]` is the string-safe text
-form; it is not recursive structure. Pipe-parenthesis `(|...|)` and pipe-brace
-`{|...|}` are recursive delimiter forms: they preserve inner NOTA objects while
-giving higher schema layers distinct structural shapes for low-level enum-like
-and struct-like declarations.*
+form; it is not recursive structure. Pipe text may use longer matching pipe
+fences such as `[||...||]` when the payload itself contains `|]`, so NOTA
+string encoding stays lossless and never mutates bracket-bearing text.
+Pipe-parenthesis `(|...|)` and pipe-brace `{|...|}` are recursive delimiter
+forms: they preserve inner NOTA objects while giving higher schema layers
+distinct structural shapes for low-level enum-like and struct-like
+declarations.*
 
 *Macro heads are not sigiled at the raw NOTA layer. A macro name is just a
 symbol candidate until a schema context reads a known schema-node position as a

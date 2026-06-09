@@ -450,17 +450,24 @@ impl<'value> NotaString<'value> {
     }
 
     pub fn format(&self) -> String {
-        if self.value.contains("|]") {
-            format!("[{}]", self.value.replace(']', " ]"))
-        } else if self
+        if self
             .value
             .chars()
             .any(|character| matches!(character, '[' | ']' | '(' | ')' | '{' | '}' | ';' | '\n'))
         {
-            format!("[|{}|]", self.value)
+            let fence = "|".repeat(self.pipe_fence_width());
+            format!("[{fence}{}{fence}]", self.value)
         } else {
             format!("[{}]", self.value)
         }
+    }
+
+    fn pipe_fence_width(&self) -> usize {
+        let mut width = 1;
+        while self.value.contains(&format!("{}]", "|".repeat(width))) {
+            width += 1;
+        }
+        width
     }
 }
 

@@ -755,12 +755,14 @@ impl<'source> Parser<'source> {
     fn parse_pipe_text(&mut self) -> Result<Block, NotaError> {
         let start = self.cursor.position();
         self.bump();
-        self.bump();
+        let pipe_count = self.consume_pipe_text_open();
         let text_start = self.cursor.byte_offset;
         while let Some(character) = self.peek() {
-            if character == '|' && self.peek_next() == Some(']') {
+            if character == '|' && self.at_pipe_text_close(pipe_count) {
                 let text = self.source[text_start..self.cursor.byte_offset].to_owned();
-                self.bump();
+                for _ in 0..pipe_count {
+                    self.bump();
+                }
                 self.bump();
                 let end = self.cursor.position();
                 return Ok(Block::PipeText(PipeText {
@@ -771,6 +773,25 @@ impl<'source> Parser<'source> {
             self.bump();
         }
         Err(NotaError::UnclosedPipeText { position: start })
+    }
+
+    fn consume_pipe_text_open(&mut self) -> usize {
+        let mut pipe_count = 0;
+        while self.peek() == Some('|') {
+            self.bump();
+            pipe_count += 1;
+        }
+        pipe_count
+    }
+
+    fn at_pipe_text_close(&self, pipe_count: usize) -> bool {
+        let mut characters = self.source[self.cursor.byte_offset..].chars();
+        for _ in 0..pipe_count {
+            if characters.next() != Some('|') {
+                return false;
+            }
+        }
+        characters.next() == Some(']')
     }
 
     fn parse_atom(&mut self) -> Block {
