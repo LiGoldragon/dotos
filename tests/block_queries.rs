@@ -160,8 +160,8 @@ fn pipe_text_is_square_bracket_safe_and_not_recursively_parsed() {
 }
 
 #[test]
-fn pipe_text_accepts_longer_fence_when_text_contains_single_pipe_close_marker() {
-    let source = "[||macro body can contain |] without ending||]";
+fn pipe_text_escapes_single_pipe_close_marker() {
+    let source = "[|macro body can contain \\|] without ending|]";
     let document = Document::parse(source).expect("valid nota");
     let root = document.root_object_at(0).expect("root");
 

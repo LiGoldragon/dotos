@@ -755,43 +755,31 @@ impl<'source> Parser<'source> {
     fn parse_pipe_text(&mut self) -> Result<Block, NotaError> {
         let start = self.cursor.position();
         self.bump();
-        let pipe_count = self.consume_pipe_text_open();
-        let text_start = self.cursor.byte_offset;
+        self.bump();
+        let mut text = String::new();
         while let Some(character) = self.peek() {
-            if character == '|' && self.at_pipe_text_close(pipe_count) {
-                let text = self.source[text_start..self.cursor.byte_offset].to_owned();
-                for _ in 0..pipe_count {
+            if character == '\\' {
+                self.bump();
+                if let Some(escaped) = self.peek() {
+                    text.push(escaped);
                     self.bump();
+                } else {
+                    text.push('\\');
                 }
+            } else if character == '|' && self.peek_next() == Some(']') {
+                self.bump();
                 self.bump();
                 let end = self.cursor.position();
                 return Ok(Block::PipeText(PipeText {
                     text,
                     span: SourceSpan { start, end },
                 }));
+            } else {
+                text.push(character);
+                self.bump();
             }
-            self.bump();
         }
         Err(NotaError::UnclosedPipeText { position: start })
-    }
-
-    fn consume_pipe_text_open(&mut self) -> usize {
-        let mut pipe_count = 0;
-        while self.peek() == Some('|') {
-            self.bump();
-            pipe_count += 1;
-        }
-        pipe_count
-    }
-
-    fn at_pipe_text_close(&self, pipe_count: usize) -> bool {
-        let mut characters = self.source[self.cursor.byte_offset..].chars();
-        for _ in 0..pipe_count {
-            if characters.next() != Some('|') {
-                return false;
-            }
-        }
-        characters.next() == Some(']')
     }
 
     fn parse_atom(&mut self) -> Block {

@@ -8,9 +8,9 @@
 - `Block` is either a delimited object, a pipe-text object, or an atom.
   Delimited objects include standard parentheses, square brackets, braces, and
   the recursive pipe forms `(|...|)` and `{|...|}`. Pipe-square `[|...|]`
-  remains text, not recursive structure. Pipe-square text can widen its pipe
-  fence (`[||...||]`, `[|||...|||]`, etc.) when the payload contains a shorter
-  close marker such as `|]`; `NotaString` chooses the shortest lossless fence.
+  remains text, not recursive structure. Pipe-square text uses backslash escapes
+  for literal close markers and backslashes (`\|]`, `\\`), so the delimiter
+  shape remains bounded and readable while `NotaString` stays lossless.
 - `Delimiter` owns the textual delimiter table: opening text, closing text,
   and wrapping child encodings. `Block` exposes delimiter-specific child
   queries so consumers do not destructure raw enum variants to recover a child

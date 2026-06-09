@@ -68,13 +68,25 @@ fn codec_decodes_and_encodes_scalars() {
     let encoded = bracket_safe.to_nota();
     assert_eq!(
         encoded,
-        "[||text containing [brackets] and a closing pipe marker |]||]"
+        "[|text containing [brackets] and a closing pipe marker \\|]|]"
     );
     assert_eq!(
         NotaSource::new(&encoded)
             .parse::<String>()
             .expect("bracket-safe string decodes"),
         bracket_safe
+    );
+    let slash_safe = String::from("text containing [brackets] and a backslash \\");
+    let encoded = slash_safe.to_nota();
+    assert_eq!(
+        encoded,
+        "[|text containing [brackets] and a backslash \\\\|]"
+    );
+    assert_eq!(
+        NotaSource::new(&encoded)
+            .parse::<String>()
+            .expect("escaped backslash decodes"),
+        slash_safe
     );
     assert_eq!(42_u64.to_nota(), "42");
     assert_eq!(255_u8.to_nota(), "255");

@@ -455,19 +455,27 @@ impl<'value> NotaString<'value> {
             .chars()
             .any(|character| matches!(character, '[' | ']' | '(' | ')' | '{' | '}' | ';' | '\n'))
         {
-            let fence = "|".repeat(self.pipe_fence_width());
-            format!("[{fence}{}{fence}]", self.value)
+            format!("[|{}|]", self.escape_pipe_text())
         } else {
             format!("[{}]", self.value)
         }
     }
 
-    fn pipe_fence_width(&self) -> usize {
-        let mut width = 1;
-        while self.value.contains(&format!("{}]", "|".repeat(width))) {
-            width += 1;
+    fn escape_pipe_text(&self) -> String {
+        let mut escaped = String::new();
+        let mut characters = self.value.chars().peekable();
+        while let Some(character) = characters.next() {
+            if character == '\\' {
+                escaped.push('\\');
+                escaped.push('\\');
+            } else if character == '|' && characters.peek() == Some(&']') {
+                escaped.push('\\');
+                escaped.push('|');
+            } else {
+                escaped.push(character);
+            }
         }
-        width
+        escaped
     }
 }
 
