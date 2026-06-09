@@ -81,7 +81,7 @@ fn derive_reads_and_writes_record_shapes() {
             magnitude: 7,
         }
     );
-    assert_eq!(entry.to_nota(), "([schema] [derive works] 7)");
+    assert_eq!(entry.to_nota(), "(schema [derive works] 7)");
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn derive_reads_and_writes_enum_shapes() {
         .expect("unit request decodes");
 
     assert!(matches!(record, Request::Record(_)));
-    assert_eq!(record.to_nota(), "(Record ([schema] [derive works] 7))");
+    assert_eq!(record.to_nota(), "(Record (schema [derive works] 7))");
     assert_eq!(ping, Request::Ping);
     assert_eq!(ping.to_nota(), "Ping");
 }
@@ -116,7 +116,7 @@ fn derive_reads_and_writes_multi_field_enum_payloads() {
     );
     assert_eq!(
         reference.to_nota(),
-        "(Map (String (Optional (Plain [Entry]))))"
+        "(Map (String (Optional (Plain Entry))))"
     );
 }
 
@@ -144,7 +144,7 @@ fn derive_uses_shared_collection_codec() {
     assert_eq!(entries.entries.len(), 2);
     assert_eq!(
         entries.to_nota(),
-        "({[alpha] ([alpha] [first] 1) [beta] ([beta] [second] 2)})"
+        "({alpha (alpha first 1) beta (beta second 2)})"
     );
 }
 
@@ -168,7 +168,7 @@ fn derive_reads_and_writes_known_root_document_bodies() {
     assert_eq!(document, object);
     assert_eq!(
         document.to_nota_document_body().to_nota(),
-        "[schema]\n[]\n[[Record] [Observe]]"
+        "schema\n[]\n[Record Observe]"
     );
 }
 

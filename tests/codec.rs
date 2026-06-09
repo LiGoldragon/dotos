@@ -160,7 +160,7 @@ fn codec_decodes_and_encodes_collection_values() {
         .parse::<Vec<String>>()
         .expect("vector decodes");
     assert_eq!(vector, vec!["alpha", "beta", "gamma"]);
-    assert_eq!(vector.to_nota(), "[[alpha] [beta] [gamma]]");
+    assert_eq!(vector.to_nota(), "[alpha beta gamma]");
 
     let option = NotaSource::new("(Some [cache entry])")
         .parse::<Option<String>>()
@@ -183,7 +183,7 @@ fn codec_decodes_and_encodes_ordered_map_values() {
 
     assert_eq!(map.get("alpha"), Some(&1));
     assert_eq!(map.get("beta"), Some(&2));
-    assert_eq!(map.to_nota(), "{[alpha] 1 [beta] 2}");
+    assert_eq!(map.to_nota(), "{alpha 1 beta 2}");
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn codec_decodes_and_encodes_known_root_document_body() {
     );
     assert_eq!(
         value.to_nota(),
-        "[schema-next:core]\n[[alpha] [beta]]\n[[Recorded] [Rejected]]"
+        "[schema-next:core]\n[alpha beta]\n[Recorded Rejected]"
     );
 }
 

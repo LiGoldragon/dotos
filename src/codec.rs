@@ -450,6 +450,9 @@ impl<'value> NotaString<'value> {
     }
 
     pub fn format(&self) -> String {
+        if self.qualifies_as_bare_string_atom() {
+            return self.value.to_owned();
+        }
         if self
             .value
             .chars()
@@ -459,6 +462,18 @@ impl<'value> NotaString<'value> {
         } else {
             format!("[{}]", self.value)
         }
+    }
+
+    fn qualifies_as_bare_string_atom(&self) -> bool {
+        !self.value.is_empty()
+            && self.value.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
+            })
+            && self
+                .value
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic())
     }
 
     fn escape_pipe_text(&self) -> String {
