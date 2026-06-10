@@ -70,7 +70,7 @@ struct KnownRootDocument {
 
 #[test]
 fn derive_reads_and_writes_record_shapes() {
-    let source = NotaSource::new("([schema] [derive works] 7)");
+    let source = NotaSource::new("(schema [derive works] 7)");
     let entry = source.parse::<Entry>().expect("entry decodes");
 
     assert_eq!(
@@ -86,7 +86,7 @@ fn derive_reads_and_writes_record_shapes() {
 
 #[test]
 fn derive_reads_and_writes_enum_shapes() {
-    let record = NotaSource::new("(Record ([schema] [derive works] 7))")
+    let record = NotaSource::new("(Record (schema [derive works] 7))")
         .parse::<Request>()
         .expect("record request decodes");
     let ping = NotaSource::new("Ping")
@@ -101,7 +101,7 @@ fn derive_reads_and_writes_enum_shapes() {
 
 #[test]
 fn derive_reads_and_writes_multi_field_enum_payloads() {
-    let reference = NotaSource::new("(Map (String (Optional (Plain [Entry]))))")
+    let reference = NotaSource::new("(Map (String (Optional (Plain Entry))))")
         .parse::<TypeReference>()
         .expect("multi-field enum variant decodes");
 
@@ -136,7 +136,7 @@ fn derive_rejects_multi_field_enum_payloads_with_wrong_tuple_size() {
 
 #[test]
 fn derive_uses_shared_collection_codec() {
-    let source = NotaSource::new("({alpha ([alpha] [first] 1) beta ([beta] [second] 2)})");
+    let source = NotaSource::new("({alpha (alpha first 1) beta (beta second 2)})");
     let entries = source
         .parse::<TopicMap>()
         .expect("map-backed record decodes");
@@ -150,14 +150,14 @@ fn derive_uses_shared_collection_codec() {
 
 #[test]
 fn derive_reads_and_writes_known_root_document_bodies() {
-    let source = NotaSource::new("[schema]\n[]\n[[Record] [Observe]]");
+    let source = NotaSource::new("schema\n[]\n[Record Observe]");
     let document = source
         .parse_document_body::<KnownRootDocument>()
         .expect("known-root body decodes");
     let body_document = source
         .parse_body::<KnownRootDocument>()
         .expect("known-root body decodes through semantic body API");
-    let object = NotaSource::new("([schema] [] [[Record] [Observe]])")
+    let object = NotaSource::new("(schema [] [Record Observe])")
         .parse::<KnownRootDocument>()
         .expect("parenthesized object body decodes");
 
@@ -174,14 +174,14 @@ fn derive_reads_and_writes_known_root_document_bodies() {
 
 #[test]
 fn derive_body_parser_is_wrapper_agnostic_for_struct_types() {
-    let wrapped = Document::parse("([schema] [derive works] 7)").expect("wrapped form parses");
+    let wrapped = Document::parse("(schema [derive works] 7)").expect("wrapped form parses");
     let wrapper_root = wrapped.root_object_at(0).expect("one root object");
     let wrapper_body = wrapper_root
         .as_delimited(Delimiter::Parenthesis)
         .expect("wrapper is parenthesized");
     let from_wrapper = Entry::from_body_objects(wrapper_body).expect("body decodes");
 
-    let unwrapped = Document::parse("[schema] [derive works] 7").expect("body-only form parses");
+    let unwrapped = Document::parse("schema [derive works] 7").expect("body-only form parses");
     let from_file_root = Entry::from_body_objects(unwrapped.root_objects()).expect("body decodes");
 
     assert_eq!(from_wrapper, from_file_root);
@@ -197,7 +197,7 @@ fn derive_body_parser_is_wrapper_agnostic_for_struct_types() {
 
 #[test]
 fn derive_body_parser_validates_field_count() {
-    let too_few = Document::parse("[schema] [derive works]").expect("source parses");
+    let too_few = Document::parse("schema [derive works]").expect("source parses");
     let error = Entry::from_body_objects(too_few.root_objects())
         .expect_err("two-field body cannot fill three-field struct");
     let message = error.to_string();
@@ -206,7 +206,7 @@ fn derive_body_parser_validates_field_count() {
         "error was {message}"
     );
 
-    let too_many = Document::parse("[schema] [derive works] 7 [stray]").expect("source parses");
+    let too_many = Document::parse("schema [derive works] 7 stray").expect("source parses");
     let error = Entry::from_body_objects(too_many.root_objects())
         .expect_err("four-object body cannot fill three-field struct");
     assert!(error.to_string().contains("Entry"), "error was {error}");
@@ -236,10 +236,10 @@ mod local_result_alias {
     #[test]
     fn derive_generated_code_ignores_local_result_alias() {
         local_alias_is_in_scope().expect("local alias helper returns");
-        let record = NotaSource::new("([schema] 7)")
+        let record = NotaSource::new("(schema 7)")
             .parse::<AliasedRecord>()
             .expect("record decodes despite local Result alias");
-        let request = NotaSource::new("(Record ([schema] 7))")
+        let request = NotaSource::new("(Record (schema 7))")
             .parse::<AliasedRequest>()
             .expect("enum decodes despite local Result alias");
 

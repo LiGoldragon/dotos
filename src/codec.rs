@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::{Block, Delimiter, Document};
+use crate::{Block, Delimiter, Document, parser::AtomCharacter};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NotaDecodeError {
@@ -24,6 +24,10 @@ pub enum NotaDecodeError {
     UnknownVariant {
         enum_name: &'static str,
         variant: String,
+    },
+    NonCanonicalStringDelimiter {
+        value: String,
+        canonical: String,
     },
     InvalidInteger {
         value: String,
@@ -65,6 +69,10 @@ impl fmt::Display for NotaDecodeError {
             Self::UnknownVariant { enum_name, variant } => {
                 write!(formatter, "unknown {enum_name} variant {variant}")
             }
+            Self::NonCanonicalStringDelimiter { value, canonical } => write!(
+                formatter,
+                "non-canonical string delimiter for {value:?}: use {canonical}"
+            ),
             Self::InvalidInteger { value } => write!(formatter, "invalid integer {value}"),
             Self::InvalidValue {
                 type_name,
@@ -342,14 +350,19 @@ impl<'block> NotaBlock<'block> {
 
     pub fn parse_string(&self) -> Result<String, NotaDecodeError> {
         if let Some(text) = self.block.demote_to_string() {
+            if self.block.is_pipe_text() {
+                NotaString::new(text).reject_redundant_delimiter()?;
+            }
             return Ok(text.to_owned());
         }
         if let Some(root_objects) = self.block.as_delimited(Delimiter::SquareBracket) {
-            return root_objects
+            let text = root_objects
                 .iter()
                 .map(|block| NotaBlock::new(block).parse_string())
                 .collect::<Result<Vec<_>, _>>()
-                .map(|parts| parts.join(" "));
+                .map(|parts| parts.join(" "))?;
+            NotaString::new(&text).reject_redundant_delimiter()?;
+            return Ok(text);
         }
         Err(NotaDecodeError::ExpectedDelimited {
             type_name: "String",
@@ -456,7 +469,8 @@ impl<'value> NotaString<'value> {
         if self
             .value
             .chars()
-            .any(|character| matches!(character, '[' | ']' | '(' | ')' | '{' | '}' | ';' | '\n'))
+            .any(|character| matches!(character, '[' | ']' | '(' | ')' | '{' | '}' | '\n'))
+            || self.value.contains(";;")
         {
             format!("[|{}|]", self.escape_pipe_text())
         } else {
@@ -466,14 +480,26 @@ impl<'value> NotaString<'value> {
 
     fn qualifies_as_bare_string_atom(&self) -> bool {
         !self.value.is_empty()
-            && self.value.chars().all(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
-            })
+            && !self.value.contains(";;")
+            && !self
+                .value
+                .as_bytes()
+                .windows(2)
+                .any(|pair| matches!(pair, b"|)" | b"|]" | b"|}"))
             && self
                 .value
                 .chars()
-                .next()
-                .is_some_and(|character| character.is_ascii_alphabetic())
+                .all(|character| AtomCharacter::new(character).is_bare_string())
+    }
+
+    fn reject_redundant_delimiter(&self) -> Result<(), NotaDecodeError> {
+        if self.qualifies_as_bare_string_atom() {
+            return Err(NotaDecodeError::NonCanonicalStringDelimiter {
+                value: self.value.to_owned(),
+                canonical: self.format(),
+            });
+        }
+        Ok(())
     }
 
     fn escape_pipe_text(&self) -> String {

@@ -585,10 +585,6 @@ impl AtomClassification {
         } else if text
             .chars()
             .all(|character| AtomCharacter::new(character).is_symbol())
-            && text
-                .chars()
-                .next()
-                .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
         {
             Self::SymbolCandidate
         } else {
@@ -786,9 +782,9 @@ impl<'source> Parser<'source> {
         let start = self.cursor.position();
         while let Some(character) = self.peek() {
             if character.is_whitespace()
-                || character == ';'
                 || Delimiter::from_opening(character).is_some()
                 || Delimiter::from_closing(character).is_some()
+                || self.at_comment_start()
                 || self.at_pipe_delimiter_close()
             {
                 break;
@@ -812,13 +808,17 @@ impl<'source> Parser<'source> {
                 .is_some_and(|character| Delimiter::from_closing(character).is_some())
     }
 
+    fn at_comment_start(&self) -> bool {
+        self.peek() == Some(';') && self.peek_next() == Some(';')
+    }
+
     fn skip_spacing(&mut self) {
         loop {
             match self.peek() {
                 Some(character) if character.is_whitespace() => {
                     self.bump();
                 }
-                Some(';') => {
+                Some(';') if self.peek_next() == Some(';') => {
                     while let Some(character) = self.peek() {
                         self.bump();
                         if character == '\n' {
@@ -882,16 +882,21 @@ impl Cursor {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct AtomCharacter {
+pub(crate) struct AtomCharacter {
     character: char,
 }
 
 impl AtomCharacter {
-    fn new(character: char) -> Self {
+    pub(crate) fn new(character: char) -> Self {
         Self { character }
     }
 
     fn is_symbol(&self) -> bool {
-        self.character.is_ascii_alphanumeric() || matches!(self.character, '_' | '-' | ':' | '*')
+        self.is_bare_string()
+    }
+
+    pub(crate) fn is_bare_string(&self) -> bool {
+        !self.character.is_whitespace()
+            && !matches!(self.character, '"' | '(' | ')' | '[' | ']' | '{' | '}')
     }
 }

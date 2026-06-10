@@ -55,7 +55,7 @@ fn exposes_delimiter_text_and_child_helpers() {
 #[test]
 fn classifies_atoms_as_candidates_without_schema_semantics() {
     let document = Document::parse(
-        "TypeName field-name camelName schema:module:Type CustomMacro RecordPayload 42 7.5",
+        "TypeName field-name camelName schema:module:Type CustomMacro RecordPayload 42 7.5 name@host required* a&b score^2 100% x>y x<y path/to a;b",
     )
     .expect("valid nota");
     let roots = document.root_objects();
@@ -83,6 +83,23 @@ fn classifies_atoms_as_candidates_without_schema_semantics() {
         roots[7].atom().expect("atom").classification(),
         AtomClassification::DecimalCandidate
     );
+    for root in &roots[8..] {
+        assert_eq!(
+            root.atom().expect("atom").classification(),
+            AtomClassification::SymbolCandidate
+        );
+    }
+}
+
+#[test]
+fn double_semicolon_is_comment_and_single_semicolon_is_atom_text() {
+    let source = "alpha;beta ;; comment text\n gamma;; trailing comment";
+    let document = Document::parse(source).expect("valid nota");
+    let roots = document.root_objects();
+
+    assert_eq!(roots.len(), 2);
+    assert_eq!(roots[0].demote_to_string(), Some("alpha;beta"));
+    assert_eq!(roots[1].demote_to_string(), Some("gamma"));
 }
 
 #[test]

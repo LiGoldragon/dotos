@@ -43,10 +43,12 @@ delimiter.*
 *NOTA owns Rust value codec shapes through shared `NotaDecode` and
 `NotaEncode` traits. The codec can read and write strings, integers, booleans,
 vectors, ordered maps, and options as NOTA values. String encoding is minimal:
-bare-safe strings render as bare atoms in typed string positions, bracket
-strings render strings with whitespace or punctuation, and pipe text renders
-delimiter-bearing strings. Schema owns the type-name vocabulary and declaration
-semantics layered above those value shapes.*
+broad bare-safe strings render as bare atoms in typed string positions; inline
+bracket strings render strings that need whitespace delimiters; pipe text
+renders delimiter-bearing, comment-marker-bearing, or multi-line strings. Typed
+`String` decoding rejects redundant bracket or pipe delimiters when the decoded
+text is eligible for bare atom formatting. Schema owns the type-name vocabulary
+and declaration semantics layered above those value shapes.*
 
 *Known-root files are decoded as document bodies. When a caller already knows
 the root type, NOTA should expose the ordered root objects as that type's body

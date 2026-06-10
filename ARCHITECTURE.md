@@ -40,8 +40,11 @@
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, direct body parsing, string formatting, and collection value
-  shapes. `NotaString` renders bare-safe strings as bare atoms, bracket strings
-  for ordinary non-bare text, and pipe text for delimiter-bearing text.
+  shapes. `NotaString` renders broad bare-safe strings as bare atoms, inline
+  brackets for whitespace-delimited strings, and pipe text for strings carrying
+  structural delimiters, `;;`, pipe-close markers, or newlines. Typed `String`
+  decoding rejects bracketed or pipe-delimited strings when the decoded text can
+  be written as a bare atom.
 - `NotaDocumentBody` and `NotaDocumentEncoding` are the known-root document
   compatibility helpers over the shared body layer. They expose a file's root
   object stream as the body of the caller's known type, and they format the

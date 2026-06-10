@@ -64,6 +64,21 @@ fn codec_decodes_and_encodes_scalars() {
         "schema owns strings".to_owned().to_nota(),
         "[schema owns strings]"
     );
+    assert_eq!(
+        "schema@next;required*;a&b^2%>x<y:path/to"
+            .to_owned()
+            .to_nota(),
+        "schema@next;required*;a&b^2%>x<y:path/to"
+    );
+    assert_eq!(
+        NotaSource::new("schema@next;required*;a&b^2%>x<y:path/to")
+            .parse::<String>()
+            .expect("broad bare string decodes"),
+        "schema@next;required*;a&b^2%>x<y:path/to"
+    );
+    assert_eq!("100%".to_owned().to_nota(), "100%");
+    assert_eq!("alpha; beta".to_owned().to_nota(), "[alpha; beta]");
+    assert_eq!("alpha;;beta".to_owned().to_nota(), "[|alpha;;beta|]");
     let bracket_safe = "text containing [brackets] and a closing pipe marker |]".to_owned();
     let encoded = bracket_safe.to_nota();
     assert_eq!(
@@ -96,6 +111,27 @@ fn codec_decodes_and_encodes_scalars() {
     assert_eq!((-128_i64).to_nota(), "-128");
     assert_eq!((-122.3_f64).to_nota(), "-122.3");
     assert_eq!(false.to_nota(), "False");
+}
+
+#[test]
+fn codec_rejects_brackets_around_bare_eligible_strings() {
+    let error = NotaSource::new("[schema]")
+        .parse::<String>()
+        .expect_err("redundant inline brackets reject");
+
+    assert!(
+        error.to_string().contains("use schema"),
+        "error was {error}"
+    );
+
+    let error = NotaSource::new("[|schema|]")
+        .parse::<String>()
+        .expect_err("redundant pipe brackets reject");
+
+    assert!(
+        error.to_string().contains("use schema"),
+        "error was {error}"
+    );
 }
 
 #[test]
@@ -261,10 +297,10 @@ impl KnownRootExample {
 
 #[test]
 fn codec_decodes_known_root_and_parenthesized_object_from_the_same_body_shape() {
-    let document_body = NotaSource::new("[schema-next:core]\n[alpha beta]\n[Recorded Rejected]")
+    let document_body = NotaSource::new("schema-next:core\n[alpha beta]\n[Recorded Rejected]")
         .parse_document_body::<KnownRootExample>()
         .expect("document body decodes");
-    let block = NotaSource::new("([schema-next:core] [alpha beta] [Recorded Rejected])")
+    let block = NotaSource::new("(schema-next:core [alpha beta] [Recorded Rejected])")
         .parse_root()
         .expect("parenthesized object parses");
     let object_body = NotaBlock::new(&block)
@@ -277,7 +313,7 @@ fn codec_decodes_known_root_and_parenthesized_object_from_the_same_body_shape() 
 
 #[test]
 fn codec_decodes_and_encodes_known_root_document_body() {
-    let source = "[schema-next:core]\n[alpha beta]\n[Recorded Rejected]";
+    let source = "schema-next:core\n[alpha beta]\n[Recorded Rejected]";
     let value = KnownRootExample::from_nota_source(source).expect("known root body decodes");
 
     assert_eq!(
@@ -290,14 +326,14 @@ fn codec_decodes_and_encodes_known_root_document_body() {
     );
     assert_eq!(
         value.to_nota(),
-        "[schema-next:core]\n[alpha beta]\n[Recorded Rejected]"
+        "schema-next:core\n[alpha beta]\n[Recorded Rejected]"
     );
 }
 
 #[test]
 fn codec_known_root_body_preserves_raw_root_structure_for_callers() {
     let value =
-        KnownRootExample::from_nota_source("[core]\n[]\n[]").expect("empty body vectors decode");
+        KnownRootExample::from_nota_source("core\n[]\n[]").expect("empty body vectors decode");
     let encoding = value.to_nota_document_body();
     let reparsed =
         nota_next::Document::parse(encoding.to_nota()).expect("known-root body emits legal NOTA");
