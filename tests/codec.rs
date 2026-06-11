@@ -212,6 +212,34 @@ fn codec_decodes_and_encodes_collection_values() {
 }
 
 #[test]
+fn codec_decodes_and_encodes_byte_sequences_as_hex_text() {
+    let bytes = NotaSource::new("deadbeef")
+        .parse::<nota_next::ByteSequence>()
+        .expect("byte sequence decodes");
+    assert_eq!(bytes.payload(), &[0xde, 0xad, 0xbe, 0xef]);
+    assert_eq!(bytes.to_nota(), "deadbeef");
+
+    let fixed = NotaSource::new("01020304")
+        .parse::<nota_next::FixedByteSequence<4>>()
+        .expect("fixed byte sequence decodes");
+    assert_eq!(fixed.payload(), &[0x01, 0x02, 0x03, 0x04]);
+    assert_eq!(fixed.to_nota(), "01020304");
+}
+
+#[test]
+fn codec_rejects_noncanonical_byte_sequence_hex() {
+    let odd = NotaSource::new("abc")
+        .parse::<nota_next::ByteSequence>()
+        .expect_err("odd hex length rejects");
+    assert!(odd.to_string().contains("odd length"));
+
+    let wrong_width = NotaSource::new("deadbeef")
+        .parse::<nota_next::FixedByteSequence<2>>()
+        .expect_err("wrong fixed width rejects");
+    assert!(wrong_width.to_string().contains("expected 4 hex digits"));
+}
+
+#[test]
 fn codec_decodes_and_encodes_ordered_map_values() {
     let map = NotaSource::new("{alpha 1 beta 2}")
         .parse::<BTreeMap<String, u64>>()

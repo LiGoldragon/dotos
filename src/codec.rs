@@ -720,6 +720,158 @@ impl NotaEncode for bool {
     }
 }
 
+#[derive(
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
+pub struct ByteSequence(Vec<u8>);
+
+impl ByteSequence {
+    pub fn new(payload: Vec<u8>) -> Self {
+        Self(payload)
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub fn into_payload(self) -> Vec<u8> {
+        self.0
+    }
+
+    pub fn from_hex(text: &str) -> Result<Self, NotaDecodeError> {
+        if !text.len().is_multiple_of(2) {
+            return Err(NotaDecodeError::Parse(format!(
+                "byte sequence hex literal has odd length: {text}"
+            )));
+        }
+        let mut bytes = Vec::with_capacity(text.len() / 2);
+        for pair in text.as_bytes().chunks_exact(2) {
+            let high = Self::hex_digit(pair[0])?;
+            let low = Self::hex_digit(pair[1])?;
+            bytes.push((high << 4) | low);
+        }
+        Ok(Self(bytes))
+    }
+
+    fn hex_digit(digit: u8) -> Result<u8, NotaDecodeError> {
+        match digit {
+            b'0'..=b'9' => Ok(digit - b'0'),
+            b'a'..=b'f' => Ok(digit - b'a' + 10),
+            other => Err(NotaDecodeError::Parse(format!(
+                "byte sequence hex literal has a non-hex digit: {other}"
+            ))),
+        }
+    }
+}
+
+impl From<Vec<u8>> for ByteSequence {
+    fn from(payload: Vec<u8>) -> Self {
+        Self::new(payload)
+    }
+}
+
+impl NotaDecode for ByteSequence {
+    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
+        let hex = String::from_nota_block(block)?;
+        Self::from_hex(&hex)
+    }
+}
+
+impl NotaEncode for ByteSequence {
+    fn to_nota(&self) -> String {
+        let mut hex = String::with_capacity(self.0.len() * 2);
+        for byte in &self.0 {
+            hex.push_str(&format!("{byte:02x}"));
+        }
+        hex.to_nota()
+    }
+}
+
+#[derive(
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
+pub struct FixedByteSequence<const WIDTH: usize>([u8; WIDTH]);
+
+impl<const WIDTH: usize> FixedByteSequence<WIDTH> {
+    pub fn new(payload: [u8; WIDTH]) -> Self {
+        Self(payload)
+    }
+
+    pub fn payload(&self) -> &[u8; WIDTH] {
+        &self.0
+    }
+
+    pub fn into_payload(self) -> [u8; WIDTH] {
+        self.0
+    }
+
+    pub fn from_hex(text: &str) -> Result<Self, NotaDecodeError> {
+        if text.len() != WIDTH * 2 {
+            return Err(NotaDecodeError::Parse(format!(
+                "fixed byte sequence expected {} hex digits, found {}",
+                WIDTH * 2,
+                text.len()
+            )));
+        }
+        let mut bytes = [0u8; WIDTH];
+        for (index, pair) in text.as_bytes().chunks_exact(2).enumerate() {
+            bytes[index] = (Self::hex_digit(pair[0])? << 4) | Self::hex_digit(pair[1])?;
+        }
+        Ok(Self(bytes))
+    }
+
+    fn hex_digit(digit: u8) -> Result<u8, NotaDecodeError> {
+        match digit {
+            b'0'..=b'9' => Ok(digit - b'0'),
+            b'a'..=b'f' => Ok(digit - b'a' + 10),
+            other => Err(NotaDecodeError::Parse(format!(
+                "fixed byte sequence hex literal has a non-hex digit: {other}"
+            ))),
+        }
+    }
+}
+
+impl<const WIDTH: usize> From<[u8; WIDTH]> for FixedByteSequence<WIDTH> {
+    fn from(payload: [u8; WIDTH]) -> Self {
+        Self::new(payload)
+    }
+}
+
+impl<const WIDTH: usize> NotaDecode for FixedByteSequence<WIDTH> {
+    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
+        let hex = String::from_nota_block(block)?;
+        Self::from_hex(&hex)
+    }
+}
+
+impl<const WIDTH: usize> NotaEncode for FixedByteSequence<WIDTH> {
+    fn to_nota(&self) -> String {
+        let mut hex = String::with_capacity(WIDTH * 2);
+        for byte in &self.0 {
+            hex.push_str(&format!("{byte:02x}"));
+        }
+        hex.to_nota()
+    }
+}
+
 impl<Element> NotaDecode for Vec<Element>
 where
     Element: NotaDecode,
