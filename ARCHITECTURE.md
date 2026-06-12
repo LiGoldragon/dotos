@@ -32,11 +32,16 @@
   parenthesized struct decode and `#[nota(known_root)]` document decode both
   delegate into that body implementation. It also derives
   `StructuralMacroNode` for enum types with per-variant `#[shape(...)]`
-  attributes (`pascal_atom`, `keyword = "..."`, `head = "...", arity = N`, and
-  `pascal_head, arity = N`), generating the ordered structural variant list,
-  recursive per-field capture decoding, and reverse structural NOTA encoding. A
-  `keyword` variant matches a bare literal atom and carries no fields, so an
-  inner marker atom can be its own recursively-decoded structural macro node.
+  attributes (`pascal_atom`, `keyword = "..."`, `head = "...", arity = N`,
+  `head = "...", body`, and `pascal_head, arity = N`), generating the ordered
+  structural variant list, recursive per-field capture decoding, and reverse
+  structural NOTA encoding. A `keyword` variant matches a bare literal atom and
+  carries no fields, so an inner marker atom can be its own recursively-decoded
+  structural macro node. A `body` variant matches a literal-headed parenthesis
+  of any object count and carries exactly one field; the headed tail is handed
+  to that field type as a multi-block candidate, so `(Head item*)` lists decode
+  into `Vec<Node>` through the vector node impl and `(Head a b c d)` records
+  decode through the payload type's own ordered body read.
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, direct body parsing, string formatting, and collection value

@@ -802,6 +802,27 @@ impl StructuralVariantDerive {
             return quote!(#enum_name::#variant_name);
         }
         let node_name = &self.node_name;
+        if matches!(self.shape, StructuralVariantShape::HeadedBody { .. }) {
+            let field_type = &self.field_types[0];
+            return quote! {
+                #enum_name::#variant_name({
+                    let body_blocks: ::std::vec::Vec<&::nota_next::Block> =
+                        block.root_objects().iter().skip(1).collect();
+                    <#field_type as ::nota_next::StructuralMacroNode>::from_structural_candidate(
+                        ::nota_next::MacroCandidate::new(
+                            <#field_type as ::nota_next::StructuralMacroNode>::structural_position(),
+                            body_blocks,
+                        ),
+                    )
+                    .map_err(|error| ::nota_next::StructuralMacroNodeError::Field {
+                        node: #node_name,
+                        variant: #variant_text,
+                        field: 0usize,
+                        error: error.to_string(),
+                    })?
+                })
+            };
+        }
         let field_decodes = self
             .field_types
             .iter()
@@ -845,6 +866,7 @@ enum StructuralVariantShape {
     PascalAtom,
     Keyword { keyword: String },
     Headed { head: String, arity: usize },
+    HeadedBody { head: String },
     PascalHead { arity: usize },
 }
 
@@ -855,6 +877,7 @@ impl StructuralVariantShape {
         let mut head: Option<String> = None;
         let mut keyword: Option<String> = None;
         let mut arity: Option<usize> = None;
+        let mut body = false;
         let mut found = false;
         for attribute in &variant.attrs {
             if !attribute.path().is_ident("shape") {
@@ -885,6 +908,10 @@ impl StructuralVariantShape {
                     arity = Some(value.base10_parse()?);
                     return Ok(());
                 }
+                if meta.path.is_ident("body") {
+                    body = true;
+                    return Ok(());
+                }
                 Err(meta.error("unsupported shape attribute"))
             })?;
         }
@@ -901,9 +928,24 @@ impl StructuralVariantShape {
             return Ok(Self::Keyword { keyword });
         }
         if let Some(head) = head {
-            let arity =
-                arity.ok_or_else(|| Error::new_spanned(variant, "head shape needs arity = N"))?;
+            if body && arity.is_some() {
+                return Err(Error::new_spanned(
+                    variant,
+                    "head shape takes either arity = N or body, not both",
+                ));
+            }
+            if body {
+                return Ok(Self::HeadedBody { head });
+            }
+            let arity = arity
+                .ok_or_else(|| Error::new_spanned(variant, "head shape needs arity = N or body"))?;
             return Ok(Self::Headed { head, arity });
+        }
+        if body {
+            return Err(Error::new_spanned(
+                variant,
+                "body shape needs head = \"...\"",
+            ));
         }
         if pascal_head {
             let arity = arity
@@ -912,7 +954,7 @@ impl StructuralVariantShape {
         }
         Err(Error::new_spanned(
             variant,
-            "shape must be pascal_atom, keyword = \"...\", head = \"...\" with arity, or pascal_head with arity",
+            "shape must be pascal_atom, keyword = \"...\", head = \"...\" with arity or body, or pascal_head with arity",
         ))
     }
 
@@ -921,6 +963,7 @@ impl StructuralVariantShape {
             Self::PascalAtom => 1,
             Self::Keyword { .. } => 0,
             Self::Headed { arity, .. } => arity.saturating_sub(1),
+            Self::HeadedBody { .. } => 1,
             Self::PascalHead { arity } => *arity,
         };
         if fields != expected {
@@ -953,6 +996,14 @@ impl StructuralVariantShape {
                     .into_structural_variant(#variant_name, #expected)
                 }
             }
+            Self::HeadedBody { head } => quote! {
+                ::nota_next::BlockShape::headed_parenthesis(
+                    #head,
+                    ::nota_next::MacroObjectCount::Any,
+                    Some(::nota_next::CaptureName::new("signature")),
+                )
+                .into_structural_variant(#variant_name, #expected)
+            },
             Self::PascalHead { arity } => {
                 let arity = *arity as u64;
                 quote! {
@@ -974,6 +1025,9 @@ impl StructuralVariantShape {
             Self::Headed { head, arity } => {
                 format!("{variant_name}: parenthesized {head} head with arity {arity}")
             }
+            Self::HeadedBody { head } => {
+                format!("{variant_name}: parenthesized {head} head with body objects")
+            }
             Self::PascalHead { arity } => {
                 format!("{variant_name}: parenthesized PascalCase head with arity {arity}")
             }
@@ -994,6 +1048,12 @@ impl StructuralVariantShape {
                             == Some(#head)
                 }
             }
+            Self::HeadedBody { head } => quote! {
+                block.is_parenthesis()
+                    && block.root_object_at(0)
+                        .and_then(|root| root.demote_to_string())
+                        == Some(#head)
+            },
             Self::PascalHead { arity } => {
                 let arity = *arity;
                 quote! {
@@ -1015,6 +1075,9 @@ impl StructuralVariantShape {
         match self {
             Self::PascalAtom => quote!(block),
             Self::Keyword { .. } => quote!(block),
+            Self::HeadedBody { .. } => {
+                unreachable!("body shape decodes through from_structural_candidate")
+            }
             Self::Headed { .. } => {
                 let child_index = field_index + 1;
                 quote! {
@@ -1058,6 +1121,19 @@ impl StructuralVariantShape {
                 quote!(::nota_next::StructuralMacroNode::to_structural_nota(#only))
             }
             Self::Keyword { keyword } => quote!(#keyword.to_owned()),
+            Self::HeadedBody { head } => {
+                let only = &bindings[0];
+                quote! {
+                    {
+                        let body = ::nota_next::StructuralMacroNode::to_structural_nota(#only);
+                        if body.is_empty() {
+                            format!("({})", #head)
+                        } else {
+                            format!("({} {})", #head, body)
+                        }
+                    }
+                }
+            }
             Self::Headed { head, .. } => {
                 let format_literal = LitStr::new(
                     &self.headed_format(head, bindings.len()),

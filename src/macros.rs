@@ -1332,6 +1332,41 @@ where
     }
 }
 
+/// A vector reads a candidate's whole block sequence as ordered items, so a
+/// `body`-shaped variant can carry `(Head item*)` tails without a wrapper
+/// object. Encoding writes the items back space-separated as body objects.
+impl<Item> StructuralMacroNode for Vec<Item>
+where
+    Item: StructuralMacroNode,
+{
+    type Error = Item::Error;
+
+    fn structural_position() -> PositionPredicate {
+        Item::structural_position()
+    }
+
+    fn structural_variants() -> Vec<StructuralVariant> {
+        Item::structural_variants()
+    }
+
+    fn to_structural_nota(&self) -> String {
+        self.iter()
+            .map(Item::to_structural_nota)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn from_structural_candidate(
+        candidate: MacroCandidate<'_>,
+    ) -> Result<Self, StructuralMacroError<Self::Error>> {
+        candidate
+            .blocks()
+            .iter()
+            .map(|block| Item::from_structural_block(block))
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StructuralMacroNodeError {
     MissingCapture {

@@ -631,3 +631,122 @@ enum DerivedVariantSignature {
         DerivedTypeName,
     ),
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum DerivedTemplate {
+    #[shape(head = "Variants", body)]
+    Variants(Vec<DerivedTypeName>),
+    #[shape(head = "Reference", arity = 2)]
+    Reference(DerivedTypeName),
+}
+
+/// A heterogeneous body payload: the expected type reads the headed tail as
+/// its own ordered object stream through `from_structural_candidate`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DerivedSignature {
+    name: DerivedTypeName,
+    payload: DerivedTypeName,
+}
+
+impl StructuralMacroNode for DerivedSignature {
+    type Error = StructuralMacroNodeError;
+
+    fn structural_position() -> PositionPredicate {
+        PositionPredicate::named("DerivedSignature")
+    }
+
+    fn structural_variants() -> Vec<StructuralVariant> {
+        Vec::new()
+    }
+
+    fn from_structural_candidate(
+        candidate: MacroCandidate<'_>,
+    ) -> Result<Self, StructuralMacroError<Self::Error>> {
+        match candidate.blocks() {
+            [name, payload] => Ok(Self {
+                name: DerivedTypeName::from_structural_block(name)?,
+                payload: DerivedTypeName::from_structural_block(payload)?,
+            }),
+            blocks => Err(StructuralMacroError::MatchedNode(
+                StructuralMacroNodeError::MissingSlot {
+                    node: "DerivedSignature",
+                    variant: "DerivedSignature",
+                    capture: "body",
+                    slot: blocks.len(),
+                },
+            )),
+        }
+    }
+
+    fn to_structural_nota(&self) -> String {
+        format!(
+            "{} {}",
+            self.name.to_structural_nota(),
+            self.payload.to_structural_nota()
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum DerivedDeclaration {
+    #[shape(head = "Declare", body)]
+    Declare(DerivedSignature),
+}
+
+#[test]
+fn structural_macro_node_body_shape_reads_headed_tail_as_vector() {
+    let decoded = DerivedTemplate::from_structural_nota("(Variants Alpha Beta Gamma)")
+        .expect("variable-arity body decodes");
+    assert_eq!(
+        decoded,
+        DerivedTemplate::Variants(vec![
+            DerivedTypeName("Alpha".to_owned()),
+            DerivedTypeName("Beta".to_owned()),
+            DerivedTypeName("Gamma".to_owned()),
+        ])
+    );
+    assert_eq!(decoded.to_structural_nota(), "(Variants Alpha Beta Gamma)");
+
+    let sibling = DerivedTemplate::from_structural_nota("(Reference Entry)")
+        .expect("fixed-arity sibling still decodes");
+    assert_eq!(
+        sibling,
+        DerivedTemplate::Reference(DerivedTypeName("Entry".to_owned()))
+    );
+}
+
+#[test]
+fn structural_macro_node_body_shape_accepts_empty_tail() {
+    let decoded =
+        DerivedTemplate::from_structural_nota("(Variants)").expect("empty body decodes");
+    assert_eq!(decoded, DerivedTemplate::Variants(Vec::new()));
+    assert_eq!(decoded.to_structural_nota(), "(Variants)");
+}
+
+#[test]
+fn structural_macro_node_body_shape_reads_heterogeneous_body_type() {
+    let decoded = DerivedDeclaration::from_structural_nota("(Declare Watch WatchRequest)")
+        .expect("struct-shaped body decodes through its own candidate");
+    assert_eq!(
+        decoded,
+        DerivedDeclaration::Declare(DerivedSignature {
+            name: DerivedTypeName("Watch".to_owned()),
+            payload: DerivedTypeName("WatchRequest".to_owned()),
+        })
+    );
+    assert_eq!(decoded.to_structural_nota(), "(Declare Watch WatchRequest)");
+
+    let error = DerivedDeclaration::from_structural_nota("(Declare Watch)")
+        .expect_err("short body is a typed field error");
+    assert!(matches!(
+        error,
+        StructuralMacroError::MatchedNode(StructuralMacroNodeError::Field { .. })
+    ));
+}
+
+#[test]
+fn structural_macro_node_body_shape_rejects_unknown_head() {
+    let error = DerivedTemplate::from_structural_nota("(Bogus Alpha)")
+        .expect_err("unknown head does not match any variant");
+    assert!(matches!(error, StructuralMacroError::Dispatch(_)));
+}
