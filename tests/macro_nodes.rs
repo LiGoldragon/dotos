@@ -717,8 +717,7 @@ fn structural_macro_node_body_shape_reads_headed_tail_as_vector() {
 
 #[test]
 fn structural_macro_node_body_shape_accepts_empty_tail() {
-    let decoded =
-        DerivedTemplate::from_structural_nota("(Variants)").expect("empty body decodes");
+    let decoded = DerivedTemplate::from_structural_nota("(Variants)").expect("empty body decodes");
     assert_eq!(decoded, DerivedTemplate::Variants(Vec::new()));
     assert_eq!(decoded.to_structural_nota(), "(Variants)");
 }

@@ -748,7 +748,7 @@ impl ByteSequence {
     }
 
     pub fn from_hex(text: &str) -> Result<Self, NotaDecodeError> {
-        if !text.len().is_multiple_of(2) {
+        if text.len() % 2 != 0 {
             return Err(NotaDecodeError::Parse(format!(
                 "byte sequence hex literal has odd length: {text}"
             )));
