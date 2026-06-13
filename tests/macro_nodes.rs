@@ -749,3 +749,81 @@ fn structural_macro_node_body_shape_rejects_unknown_head() {
         .expect_err("unknown head does not match any variant");
     assert!(matches!(error, StructuralMacroError::Dispatch(_)));
 }
+
+/// The `pascal_head` + `body` keystone form: a captured PascalCase head plus a
+/// variable-arity tail. The fixed-arity `Pair` variant precedes the broad
+/// `Apply` so it is reached first for its exact shape.
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum DerivedApplication {
+    #[shape(pascal_head, arity = 2)]
+    Pair(DerivedTypeName, DerivedTypeName),
+    #[shape(pascal_head, body)]
+    Apply(DerivedTypeName, Vec<DerivedTypeName>),
+}
+
+#[test]
+fn structural_macro_node_pascal_head_body_reads_captured_head_with_tail() {
+    let decoded = DerivedApplication::from_structural_nota("(Foo A B)")
+        .expect("captured head with variable body decodes");
+    assert_eq!(
+        decoded,
+        DerivedApplication::Apply(
+            DerivedTypeName("Foo".to_owned()),
+            vec![
+                DerivedTypeName("A".to_owned()),
+                DerivedTypeName("B".to_owned()),
+            ],
+        )
+    );
+    assert_eq!(decoded.to_structural_nota(), "(Foo A B)");
+}
+
+#[test]
+fn structural_macro_node_pascal_head_body_accepts_empty_tail() {
+    let decoded = DerivedApplication::from_structural_nota("(Foo)")
+        .expect("captured head with empty body decodes");
+    assert_eq!(
+        decoded,
+        DerivedApplication::Apply(DerivedTypeName("Foo".to_owned()), Vec::new())
+    );
+    assert_eq!(decoded.to_structural_nota(), "(Foo)");
+}
+
+#[test]
+fn structural_macro_node_pascal_head_body_rejects_non_pascal_head() {
+    let error = DerivedApplication::from_structural_nota("(lower A B)")
+        .expect_err("a non-PascalCase head matches no variant");
+    assert!(matches!(error, StructuralMacroError::Dispatch(_)));
+}
+
+#[test]
+fn structural_macro_node_pascal_head_body_does_not_shadow_fixed_arity_sibling() {
+    // The arity-2 `Pair` shape is two root objects total: head plus one slot.
+    // It must win for that exact shape rather than fall to the broad `Apply`.
+    let pair = DerivedApplication::from_structural_nota("(Bar X)")
+        .expect("exact-arity head decodes through the specific Pair variant");
+    assert_eq!(
+        pair,
+        DerivedApplication::Pair(
+            DerivedTypeName("Bar".to_owned()),
+            DerivedTypeName("X".to_owned()),
+        )
+    );
+    assert_eq!(pair.to_structural_nota(), "(Bar X)");
+
+    // A longer head has no fixed-arity match, so it falls to the broad variant.
+    let apply = DerivedApplication::from_structural_nota("(Baz X Y Z)")
+        .expect("longer head falls to the broad PascalHeadBody variant");
+    assert_eq!(
+        apply,
+        DerivedApplication::Apply(
+            DerivedTypeName("Baz".to_owned()),
+            vec![
+                DerivedTypeName("X".to_owned()),
+                DerivedTypeName("Y".to_owned()),
+                DerivedTypeName("Z".to_owned()),
+            ],
+        )
+    );
+    assert_eq!(apply.to_structural_nota(), "(Baz X Y Z)");
+}
