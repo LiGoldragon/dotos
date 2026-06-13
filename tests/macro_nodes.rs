@@ -749,3 +749,110 @@ fn structural_macro_node_body_shape_rejects_unknown_head() {
         .expect_err("unknown head does not match any variant");
     assert!(matches!(error, StructuralMacroError::Dispatch(_)));
 }
+
+/// Mirrors schema-next `TypeReference`: a headed atom-leaf variant
+/// (`FixedBytes`) reads a numeric width directly from the atom text, a
+/// keyword variant (`Bytes`) is the bare-head sibling, and a two-child
+/// `Headed` variant (`Map`) proves the map form needs no named payload —
+/// a head with two typed sub-node children already decodes.
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum DerivedTypeReference {
+    #[shape(keyword = "Bytes")]
+    Bytes,
+    #[shape(head = "Bytes", atom)]
+    FixedBytes(u64),
+    #[shape(head = "Vec", arity = 2)]
+    Vector(Box<DerivedTypeReference>),
+    #[shape(head = "Optional", arity = 2)]
+    Optional(Box<DerivedTypeReference>),
+    #[shape(head = "Scope", arity = 2)]
+    ScopeOf(Box<DerivedTypeReference>),
+    #[shape(head = "Map", arity = 3)]
+    Map(Box<DerivedTypeReference>, Box<DerivedTypeReference>),
+    #[shape(pascal_atom)]
+    Plain(DerivedTypeName),
+}
+
+#[test]
+fn structural_macro_node_atom_shape_decodes_numeric_width() {
+    let decoded = DerivedTypeReference::from_structural_nota("(Bytes 32)")
+        .expect("fixed-bytes width decodes");
+    assert_eq!(decoded, DerivedTypeReference::FixedBytes(32));
+    assert_eq!(decoded.to_structural_nota(), "(Bytes 32)");
+
+    let reparsed = DerivedTypeReference::from_structural_nota(&decoded.to_structural_nota())
+        .expect("re-encoded fixed-bytes decodes identically");
+    assert_eq!(reparsed, decoded);
+}
+
+#[test]
+fn structural_macro_node_atom_shape_round_trips_distinct_widths() {
+    for width in [0u64, 1, 8, 64, 4096] {
+        let source = format!("(Bytes {width})");
+        let decoded = DerivedTypeReference::from_structural_nota(&source)
+            .expect("each width decodes through the atom leaf");
+        assert_eq!(decoded, DerivedTypeReference::FixedBytes(width));
+        assert_eq!(decoded.to_structural_nota(), source);
+    }
+}
+
+#[test]
+fn structural_macro_node_atom_shape_rejects_non_numeric_atom() {
+    let error = DerivedTypeReference::from_structural_nota("(Bytes wide)")
+        .expect_err("a non-numeric width is a typed field error, not a silent miss");
+    assert!(matches!(
+        error,
+        StructuralMacroError::MatchedNode(StructuralMacroNodeError::Field { field: 0, .. })
+    ));
+}
+
+#[test]
+fn structural_macro_node_atom_keyword_sibling_stays_distinct() {
+    let bare =
+        DerivedTypeReference::from_structural_nota("Bytes").expect("bare Bytes keyword decodes");
+    assert_eq!(bare, DerivedTypeReference::Bytes);
+    assert_eq!(bare.to_structural_nota(), "Bytes");
+}
+
+#[test]
+fn structural_macro_node_map_head_decodes_two_typed_children() {
+    let source = "(Map Integer (Vec Boolean))";
+    let decoded = DerivedTypeReference::from_structural_nota(source)
+        .expect("map head with two sub-node children decodes without a named payload");
+    assert_eq!(
+        decoded,
+        DerivedTypeReference::Map(
+            Box::new(DerivedTypeReference::Plain(DerivedTypeName(
+                "Integer".to_owned()
+            ))),
+            Box::new(DerivedTypeReference::Vector(Box::new(
+                DerivedTypeReference::Plain(DerivedTypeName("Boolean".to_owned()))
+            ))),
+        )
+    );
+    assert_eq!(decoded.to_structural_nota(), source);
+}
+
+#[test]
+fn structural_macro_node_type_reference_round_trips_each_form() {
+    for source in [
+        "Bytes",
+        "(Bytes 32)",
+        "(Vec Integer)",
+        "(Optional Boolean)",
+        "(Scope Path)",
+        "(Map String Integer)",
+        "Entry",
+    ] {
+        let decoded = DerivedTypeReference::from_structural_nota(source)
+            .unwrap_or_else(|error| panic!("{source} decodes: {error}"));
+        assert_eq!(
+            decoded.to_structural_nota(),
+            source,
+            "{source} re-encodes identically"
+        );
+        let reparsed = DerivedTypeReference::from_structural_nota(&decoded.to_structural_nota())
+            .unwrap_or_else(|error| panic!("{source} re-decodes: {error}"));
+        assert_eq!(reparsed, decoded, "{source} round-trips through the node");
+    }
+}
