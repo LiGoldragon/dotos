@@ -93,7 +93,8 @@ fn classifies_atoms_as_candidates_without_schema_semantics() {
 
 #[test]
 fn double_semicolon_is_comment_and_single_semicolon_is_atom_text() {
-    let source = "alpha;beta ;; comment text\n gamma;; trailing comment";
+    let source = r#"alpha;beta ;; comment text
+ gamma;; trailing comment"#;
     let document = Document::parse(source).expect("valid nota");
     let roots = document.root_objects();
 

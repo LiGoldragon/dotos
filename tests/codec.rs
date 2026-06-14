@@ -341,7 +341,9 @@ fn codec_decodes_known_root_and_parenthesized_object_from_the_same_body_shape() 
 
 #[test]
 fn codec_decodes_and_encodes_known_root_document_body() {
-    let source = "schema-next:core\n[alpha beta]\n[Recorded Rejected]";
+    let source = r#"schema-next:core
+[alpha beta]
+[Recorded Rejected]"#;
     let value = KnownRootExample::from_nota_source(source).expect("known root body decodes");
 
     assert_eq!(
