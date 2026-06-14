@@ -749,3 +749,187 @@ fn structural_macro_node_body_shape_rejects_unknown_head() {
         .expect_err("unknown head does not match any variant");
     assert!(matches!(error, StructuralMacroError::Dispatch(_)));
 }
+/// The `pascal_head` + `body` keystone form: a captured PascalCase head plus a
+/// variable-arity tail. The fixed-arity `Pair` variant precedes the broad
+/// `Apply` so it is reached first for its exact shape.
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum DerivedApplication {
+    #[shape(pascal_head, arity = 2)]
+    Pair(DerivedTypeName, DerivedTypeName),
+    #[shape(pascal_head, body)]
+    Apply(DerivedTypeName, Vec<DerivedTypeName>),
+}
+
+#[test]
+fn structural_macro_node_pascal_head_body_reads_captured_head_with_tail() {
+    let decoded = DerivedApplication::from_structural_nota("(Foo A B)")
+        .expect("captured head with variable body decodes");
+    assert_eq!(
+        decoded,
+        DerivedApplication::Apply(
+            DerivedTypeName("Foo".to_owned()),
+            vec![
+                DerivedTypeName("A".to_owned()),
+                DerivedTypeName("B".to_owned()),
+            ],
+        )
+    );
+    assert_eq!(decoded.to_structural_nota(), "(Foo A B)");
+}
+
+#[test]
+fn structural_macro_node_pascal_head_body_accepts_empty_tail() {
+    let decoded = DerivedApplication::from_structural_nota("(Foo)")
+        .expect("captured head with empty body decodes");
+    assert_eq!(
+        decoded,
+        DerivedApplication::Apply(DerivedTypeName("Foo".to_owned()), Vec::new())
+    );
+    assert_eq!(decoded.to_structural_nota(), "(Foo)");
+}
+
+#[test]
+fn structural_macro_node_pascal_head_body_rejects_non_pascal_head() {
+    let error = DerivedApplication::from_structural_nota("(lower A B)")
+        .expect_err("a non-PascalCase head matches no variant");
+    assert!(matches!(error, StructuralMacroError::Dispatch(_)));
+}
+
+#[test]
+fn structural_macro_node_pascal_head_body_does_not_shadow_fixed_arity_sibling() {
+    // The arity-2 `Pair` shape is two root objects total: head plus one slot.
+    // It must win for that exact shape rather than fall to the broad `Apply`.
+    let pair = DerivedApplication::from_structural_nota("(Bar X)")
+        .expect("exact-arity head decodes through the specific Pair variant");
+    assert_eq!(
+        pair,
+        DerivedApplication::Pair(
+            DerivedTypeName("Bar".to_owned()),
+            DerivedTypeName("X".to_owned()),
+        )
+    );
+    assert_eq!(pair.to_structural_nota(), "(Bar X)");
+
+    // A longer head has no fixed-arity match, so it falls to the broad variant.
+    let apply = DerivedApplication::from_structural_nota("(Baz X Y Z)")
+        .expect("longer head falls to the broad PascalHeadBody variant");
+    assert_eq!(
+        apply,
+        DerivedApplication::Apply(
+            DerivedTypeName("Baz".to_owned()),
+            vec![
+                DerivedTypeName("X".to_owned()),
+                DerivedTypeName("Y".to_owned()),
+                DerivedTypeName("Z".to_owned()),
+            ],
+        )
+    );
+    assert_eq!(apply.to_structural_nota(), "(Baz X Y Z)");
+}
+
+/// Mirrors schema-next `TypeReference`: a headed atom-leaf variant
+/// (`FixedBytes`) reads a numeric width directly from the atom text, a
+/// keyword variant (`Bytes`) is the bare-head sibling, and a two-child
+/// `Headed` variant (`Map`) proves the flat map form needs no named payload —
+/// a head with two typed sub-node children already decodes.
+#[derive(Clone, Debug, Eq, PartialEq, StructuralMacroNode)]
+enum DerivedTypeReference {
+    #[shape(keyword = "Bytes")]
+    Bytes,
+    #[shape(head = "Bytes", atom)]
+    FixedBytes(u64),
+    #[shape(head = "Vector", arity = 2)]
+    Vector(Box<DerivedTypeReference>),
+    #[shape(head = "Optional", arity = 2)]
+    Optional(Box<DerivedTypeReference>),
+    #[shape(head = "ScopeOf", arity = 2)]
+    ScopeOf(Box<DerivedTypeReference>),
+    #[shape(head = "Map", arity = 3)]
+    Map(Box<DerivedTypeReference>, Box<DerivedTypeReference>),
+    #[shape(pascal_atom)]
+    Plain(DerivedTypeName),
+}
+
+#[test]
+fn structural_macro_node_atom_shape_decodes_numeric_width() {
+    let decoded = DerivedTypeReference::from_structural_nota("(Bytes 32)")
+        .expect("fixed-bytes width decodes");
+    assert_eq!(decoded, DerivedTypeReference::FixedBytes(32));
+    assert_eq!(decoded.to_structural_nota(), "(Bytes 32)");
+
+    let reparsed = DerivedTypeReference::from_structural_nota(&decoded.to_structural_nota())
+        .expect("re-encoded fixed-bytes decodes identically");
+    assert_eq!(reparsed, decoded);
+}
+
+#[test]
+fn structural_macro_node_atom_shape_round_trips_distinct_widths() {
+    for width in [0u64, 1, 8, 64, 4096] {
+        let source = format!("(Bytes {width})");
+        let decoded = DerivedTypeReference::from_structural_nota(&source)
+            .expect("each width decodes through the atom leaf");
+        assert_eq!(decoded, DerivedTypeReference::FixedBytes(width));
+        assert_eq!(decoded.to_structural_nota(), source);
+    }
+}
+
+#[test]
+fn structural_macro_node_atom_shape_rejects_non_numeric_atom() {
+    let error = DerivedTypeReference::from_structural_nota("(Bytes wide)")
+        .expect_err("a non-numeric width is a typed field error, not a silent miss");
+    assert!(matches!(
+        error,
+        StructuralMacroError::MatchedNode(StructuralMacroNodeError::Field { field: 0, .. })
+    ));
+}
+
+#[test]
+fn structural_macro_node_atom_keyword_sibling_stays_distinct() {
+    let bare =
+        DerivedTypeReference::from_structural_nota("Bytes").expect("bare Bytes keyword decodes");
+    assert_eq!(bare, DerivedTypeReference::Bytes);
+    assert_eq!(bare.to_structural_nota(), "Bytes");
+}
+
+#[test]
+fn structural_macro_node_map_head_decodes_two_typed_children() {
+    let source = "(Map Integer (Vector Boolean))";
+    let decoded = DerivedTypeReference::from_structural_nota(source)
+        .expect("map head with two sub-node children decodes without a named payload");
+    assert_eq!(
+        decoded,
+        DerivedTypeReference::Map(
+            Box::new(DerivedTypeReference::Plain(DerivedTypeName(
+                "Integer".to_owned()
+            ))),
+            Box::new(DerivedTypeReference::Vector(Box::new(
+                DerivedTypeReference::Plain(DerivedTypeName("Boolean".to_owned()))
+            ))),
+        )
+    );
+    assert_eq!(decoded.to_structural_nota(), source);
+}
+
+#[test]
+fn structural_macro_node_type_reference_round_trips_each_form() {
+    for source in [
+        "Bytes",
+        "(Bytes 32)",
+        "(Vector Integer)",
+        "(Optional Boolean)",
+        "(ScopeOf Path)",
+        "(Map String Integer)",
+        "Entry",
+    ] {
+        let decoded = DerivedTypeReference::from_structural_nota(source)
+            .unwrap_or_else(|error| panic!("{source} decodes: {error}"));
+        assert_eq!(
+            decoded.to_structural_nota(),
+            source,
+            "{source} re-encodes identically"
+        );
+        let reparsed = DerivedTypeReference::from_structural_nota(&decoded.to_structural_nota())
+            .unwrap_or_else(|error| panic!("{source} re-decodes: {error}"));
+        assert_eq!(reparsed, decoded, "{source} round-trips through the node");
+    }
+}
