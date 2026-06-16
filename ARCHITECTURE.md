@@ -111,10 +111,30 @@ enum tries its ordered structural variants, and the enum decides what the
 captures mean and how the chosen variant is written back to source. NOTA does
 not discover macro meaning through a global parser.
 
-The schema layer may assign declaration meaning to pipe-parenthesis or
+The schema layer assigns declaration meaning to pipe-parenthesis and
 pipe-brace, but `nota-next` only reports those delimiter shapes and their
 children. It does not promote macro heads, validate symbol case, or decide
 whether a parenthesized object is a variant, a macro call, or ordinary data.
+
+The closed delimiter set is the three base pairs — parenthesis, square-bracket,
+brace — plus three piped variants — pipe-text, pipe-parenthesis, pipe-brace
+(Spirit `j9du`). Pipe-text is the bracket-safe / multiline string; the other two
+`nota-next` reports as `PipeParenthesis` / `PipeBrace` delimited blocks without
+interpreting them. The schema layer (not `nota-next`) assigns them:
+pipe-parenthesis `(| … |)` is the generic-declaration construct (Spirit `hh3z`)
+and pipe-brace `{| … |}` is the trait/impl construct (Spirit `bpyu`).
+
+CONSTRAINT (what we want): the substrate stays meaning-free, and the
+structural-macro shape vocabulary is rich enough to carry those constructs and
+their sugar. Shape discrimination (delimiter, object count, atom case,
+leading/trailing shape) lets optional elements be dropped and recovered by
+shape — e.g. an impl `{| [params]? Trait Target [body]? |}` tells its marker,
+parameterized, and bodied forms apart by whether a leading or trailing `[…]` is
+present, with no keywords. OPEN (how): the `#[shape(…)]` additions that
+recognize the pipe delimiters and the optional-ends matching are not yet
+implemented. The parser already produces the `PipeParenthesis` / `PipeBrace`
+blocks, so this is derive / structural-vocabulary work, not a seed-parser
+change.
 
 The codec's collection value shapes are structural NOTA values: `Vec<T>` is a
 square-bracket block, `BTreeMap<K, V>` is a brace block of key/value pairs, and

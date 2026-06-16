@@ -22,9 +22,13 @@ escape character: `\|]` carries a literal close marker and `\\` carries a
 literal backslash. That keeps the delimiter shape readable and bounded while
 letting NOTA string encoding stay lossless for bracket-bearing text.
 Pipe-parenthesis `(|...|)` and pipe-brace `{|...|}` are recursive delimiter
-forms: they preserve inner NOTA objects while giving higher schema layers
-distinct structural shapes for low-level enum-like and struct-like
-declarations.*
+forms that preserve inner NOTA objects; schema assigns them as type-kind
+markers — `(|...|)` wraps a generic declaration (`Name (| [params] body |)`,
+with the parameter list and body nested inside so the type-parameter binders
+scope the body by structure) and `{|...|}` wraps the trait/impl construct. This
+supersedes the earlier assignment of these delimiters to enum-like/struct-like
+declarations, which moved to the positional `{...}`/`[...]` forms. Per Spirit
+hh3z.*
 
 *Macro heads are not sigiled at the raw NOTA layer. A macro name is just a
 symbol candidate until a schema context reads a known schema-node position as a
