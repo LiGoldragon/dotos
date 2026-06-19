@@ -33,7 +33,8 @@
   delegate into that body implementation. It also derives
   `StructuralMacroNode` for enum types with per-variant `#[shape(...)]`
   attributes (`pascal_atom`, `keyword = "..."`, `head = "...", arity = N`,
-  `head = "...", body`, and `pascal_head, arity = N`), generating the ordered
+  `head = "...", atom`, `head = "...", body`, `pascal_head, arity = N`, and
+  `pascal_head, body`), generating the ordered
   structural variant list, recursive per-field capture decoding, and reverse
   structural NOTA encoding. A `keyword` variant matches a bare literal atom and
   carries no fields, so an inner marker atom can be its own recursively-decoded
