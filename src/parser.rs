@@ -679,6 +679,15 @@ impl<'source> Parser<'source> {
                 self.parse_pipe_delimited(Delimiter::PipeBrace)
             }
             Some('{') => self.parse_delimited(Delimiter::Brace),
+            // A misplaced pipe-close (`|]`, `|)`, `|}`) at an object position
+            // would make `parse_atom` return a zero-width atom without advancing
+            // — the enclosing loop would then spin forever, growing the block
+            // vector until it exhausts memory. Reject it so the parser always
+            // makes progress on malformed input.
+            Some('|') if self.at_pipe_delimiter_close() => Err(NotaError::UnexpectedClose {
+                found: self.peek_next().unwrap_or('|'),
+                position: self.cursor.position(),
+            }),
             Some(_) => Ok(self.parse_atom()),
             None => Ok(self.parse_atom()),
         }
