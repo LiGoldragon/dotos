@@ -9,6 +9,7 @@
 extern crate self as nota_next;
 
 mod codec;
+mod instance_schema;
 mod macros;
 mod parser;
 
@@ -19,6 +20,9 @@ pub use codec::{
     NotaNamedBodyFieldDecode, NotaNamedBodyFieldEncode, NotaNamedDocumentFieldDecode,
     NotaNamedDocumentFieldEncode, NotaSource, NotaString,
 };
+pub use instance_schema::{
+    DecodedWithSchema, InstanceSchema, InstanceSchemaBody, NotaDecodeTraced, TypeReference,
+};
 pub use macros::{
     AtomCase, AtomShape, BlockShape, CaptureName, CapturedValue, DelimitedShape, MacroCandidate,
     MacroConflict, MacroDelimiter, MacroError, MacroMatch, MacroNodeDefinition, MacroObjectCount,
@@ -26,7 +30,7 @@ pub use macros::{
     StructuralMacroError, StructuralMacroNode, StructuralMacroNodeError, StructuralVariant,
     StructuralVariantConflict, StructuralVariantError, StructuralVariantSet,
 };
-pub use nota_next_derive::{NotaDecode, NotaEncode, StructuralMacroNode};
+pub use nota_next_derive::{NotaDecode, NotaDecodeTraced, NotaEncode, StructuralMacroNode};
 pub use parser::{
     Atom, AtomClassification, Block, Delimiter, Document, NotaError, PipeText, SourcePosition,
     SourceSpan, StructureHeader, StructureShape, StructureSlot,

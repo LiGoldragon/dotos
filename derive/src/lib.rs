@@ -26,6 +26,12 @@ pub fn derive_structural_macro_node(input: TokenStream) -> TokenStream {
     StructuralDerive::new(input).expand().into()
 }
 
+#[proc_macro_derive(NotaDecodeTraced, attributes(nota))]
+pub fn derive_nota_decode_traced(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    TracedDerive::new(input).expand().into()
+}
+
 struct CodecDerive {
     input: DeriveInput,
 }
@@ -1326,5 +1332,338 @@ impl StructuralVariantShape {
     fn pascal_head_format(&self, field_count: usize) -> String {
         let placeholders = vec!["{}"; field_count].join(" ");
         format!("({placeholders})")
+    }
+}
+
+/// Emits `NotaDecodeTraced` alongside the ordinary `NotaDecode`: the same
+/// type-directed traversal, but each step also records the reference the
+/// decoder expected at that position. The trace is captured from the very path
+/// that validates the value — there is no second parser and no hand-written
+/// schema walk.
+struct TracedDerive {
+    input: DeriveInput,
+}
+
+impl TracedDerive {
+    fn new(input: DeriveInput) -> Self {
+        Self { input }
+    }
+
+    fn expand(self) -> TokenStreamTwo {
+        let name = self.input.ident;
+        let generics = GenericsWithTracedBound::new(self.input.generics).generics();
+        match self.input.data {
+            Data::Struct(data) => StructTrace::new(name, generics, data).expand(),
+            Data::Enum(data) => EnumTrace::new(name, generics, data).expand(),
+            Data::Union(_) => {
+                Error::new_spanned(name, "NotaDecodeTraced does not support unions")
+                    .to_compile_error()
+            }
+        }
+    }
+}
+
+struct StructTrace {
+    name: Ident,
+    generics: Generics,
+    data: DataStruct,
+}
+
+impl StructTrace {
+    fn new(name: Ident, generics: Generics, data: DataStruct) -> Self {
+        Self {
+            name,
+            generics,
+            data,
+        }
+    }
+
+    fn expand(self) -> TokenStreamTwo {
+        let name = self.name;
+        let type_name = name.to_string();
+        let (implementation_generics, type_generics, where_clause) = self.generics.split_for_impl();
+        match self.data.fields {
+            Fields::Named(fields) => {
+                let named_fields = fields.named;
+                let field_count = named_fields.len();
+                let field_steps = named_fields
+                    .iter()
+                    .enumerate()
+                    .map(|(index, field)| TracedFieldStep::new(index, field).body_named())
+                    .collect::<Vec<_>>();
+                quote! {
+                    impl #implementation_generics ::nota_next::NotaDecodeTraced for #name #type_generics #where_clause {
+                        fn instance_reference() -> ::nota_next::TypeReference {
+                            ::nota_next::TypeReference::named(#type_name)
+                        }
+
+                        fn from_nota_block_traced(
+                            block: &::nota_next::Block,
+                        ) -> ::std::result::Result<::nota_next::DecodedWithSchema<Self>, ::nota_next::NotaDecodeError> {
+                            let children = ::nota_next::NotaBlock::new(block).expect_children(
+                                ::nota_next::Delimiter::Parenthesis,
+                                #type_name,
+                                #field_count,
+                            )?;
+                            let mut nodes: ::std::vec::Vec<::nota_next::InstanceSchema> =
+                                ::std::vec::Vec::with_capacity(#field_count);
+                            let value = Self {
+                                #(#field_steps,)*
+                            };
+                            ::std::result::Result::Ok(::nota_next::DecodedWithSchema::new(
+                                value,
+                                ::nota_next::InstanceSchema::new(
+                                    <Self as ::nota_next::NotaDecodeTraced>::instance_reference(),
+                                    ::nota_next::InstanceSchemaBody::Struct(nodes),
+                                ),
+                            ))
+                        }
+                    }
+                }
+            }
+            Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                let field_type = &fields.unnamed.first().expect("one field checked").ty;
+                quote! {
+                    impl #implementation_generics ::nota_next::NotaDecodeTraced for #name #type_generics #where_clause {
+                        fn instance_reference() -> ::nota_next::TypeReference {
+                            ::nota_next::TypeReference::named(#type_name)
+                        }
+
+                        fn from_nota_block_traced(
+                            block: &::nota_next::Block,
+                        ) -> ::std::result::Result<::nota_next::DecodedWithSchema<Self>, ::nota_next::NotaDecodeError> {
+                            let inner = <#field_type as ::nota_next::NotaDecodeTraced>::from_nota_block_traced(block)?;
+                            let (inner_value, inner_schema) = inner.into_parts();
+                            ::std::result::Result::Ok(::nota_next::DecodedWithSchema::new(
+                                Self(inner_value),
+                                ::nota_next::InstanceSchema::new(
+                                    <Self as ::nota_next::NotaDecodeTraced>::instance_reference(),
+                                    ::nota_next::InstanceSchemaBody::Newtype(::std::boxed::Box::new(inner_schema)),
+                                ),
+                            ))
+                        }
+                    }
+                }
+            }
+            Fields::Unnamed(fields) => Error::new_spanned(
+                fields,
+                "NotaDecodeTraced supports named structs or one-field tuple newtypes",
+            )
+            .to_compile_error(),
+            Fields::Unit => Error::new_spanned(
+                name,
+                "NotaDecodeTraced supports named structs or one-field tuple newtypes",
+            )
+            .to_compile_error(),
+        }
+    }
+}
+
+struct TracedFieldStep<'field> {
+    index: usize,
+    field: &'field Field,
+}
+
+impl<'field> TracedFieldStep<'field> {
+    fn new(index: usize, field: &'field Field) -> Self {
+        Self { index, field }
+    }
+
+    fn body_named(&self) -> TokenStreamTwo {
+        let name = self.field.ident.as_ref().expect("named field");
+        let field_type = &self.field.ty;
+        let index = Index::from(self.index);
+        quote! {
+            #name: {
+                let decoded = <#field_type as ::nota_next::NotaDecodeTraced>::from_nota_block_traced(&children[#index])?;
+                let (field_value, field_schema) = decoded.into_parts();
+                nodes.push(field_schema);
+                field_value
+            }
+        }
+    }
+}
+
+struct EnumTrace {
+    name: Ident,
+    generics: Generics,
+    data: DataEnum,
+}
+
+impl EnumTrace {
+    fn new(name: Ident, generics: Generics, data: DataEnum) -> Self {
+        Self {
+            name,
+            generics,
+            data,
+        }
+    }
+
+    fn expand(self) -> TokenStreamTwo {
+        let name = self.name;
+        let enum_name = name.to_string();
+        let (implementation_generics, type_generics, where_clause) = self.generics.split_for_impl();
+        let unit_arms = self
+            .data
+            .variants
+            .iter()
+            .filter(|variant| matches!(variant.fields, Fields::Unit))
+            .map(|variant| TracedUnitVariant::new(&name, variant).arm())
+            .collect::<Vec<_>>();
+        let payload_arms = self
+            .data
+            .variants
+            .iter()
+            .filter(|variant| !matches!(variant.fields, Fields::Unit))
+            .map(|variant| TracedPayloadVariant::new(&name, variant).arm())
+            .collect::<Vec<_>>();
+        // When the enum has no unit variants, a bare atom can never be a valid
+        // variant, so the atom branch reports an unknown variant directly. This
+        // avoids an unreachable `Ok(...)` after an all-diverging match arm.
+        let atom_branch = if unit_arms.is_empty() {
+            quote! {
+                if let Some(variant) = block.demote_to_string() {
+                    return ::std::result::Result::Err(::nota_next::NotaDecodeError::UnknownVariant {
+                        enum_name: #enum_name,
+                        variant: variant.to_owned(),
+                    });
+                }
+            }
+        } else {
+            quote! {
+                if let Some(variant) = block.demote_to_string() {
+                    let value = match variant {
+                        #(#unit_arms)*
+                        other => return ::std::result::Result::Err(::nota_next::NotaDecodeError::UnknownVariant {
+                            enum_name: #enum_name,
+                            variant: other.to_owned(),
+                        }),
+                    };
+                    return ::std::result::Result::Ok(::nota_next::DecodedWithSchema::new(
+                        value,
+                        ::nota_next::InstanceSchema::new(expected, ::nota_next::InstanceSchemaBody::EnumPayload(::std::option::Option::None)),
+                    ));
+                }
+            }
+        };
+        quote! {
+            impl #implementation_generics ::nota_next::NotaDecodeTraced for #name #type_generics #where_clause {
+                fn instance_reference() -> ::nota_next::TypeReference {
+                    ::nota_next::TypeReference::named(#enum_name)
+                }
+
+                fn from_nota_block_traced(
+                    block: &::nota_next::Block,
+                ) -> ::std::result::Result<::nota_next::DecodedWithSchema<Self>, ::nota_next::NotaDecodeError> {
+                    let expected = <Self as ::nota_next::NotaDecodeTraced>::instance_reference();
+                    #atom_branch
+                    let children = ::nota_next::NotaBlock::new(block).expect_body(
+                        ::nota_next::Delimiter::Parenthesis,
+                        #enum_name,
+                    )?;
+                    let children = children.expect_fields(#enum_name, 2)?;
+                    let variant = children[0].demote_to_string().ok_or(::nota_next::NotaDecodeError::ExpectedAtom {
+                        type_name: "enum variant",
+                    })?;
+                    match variant {
+                        #(#payload_arms)*
+                        other => ::std::result::Result::Err(::nota_next::NotaDecodeError::UnknownVariant {
+                            enum_name: #enum_name,
+                            variant: other.to_owned(),
+                        }),
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct TracedUnitVariant<'variant> {
+    enum_name: &'variant Ident,
+    variant: &'variant Variant,
+}
+
+impl<'variant> TracedUnitVariant<'variant> {
+    fn new(enum_name: &'variant Ident, variant: &'variant Variant) -> Self {
+        Self { enum_name, variant }
+    }
+
+    fn arm(&self) -> TokenStreamTwo {
+        let enum_name = self.enum_name;
+        let variant_name = &self.variant.ident;
+        let tag = variant_name.to_string();
+        quote! {
+            #tag => #enum_name::#variant_name,
+        }
+    }
+}
+
+struct TracedPayloadVariant<'variant> {
+    enum_name: &'variant Ident,
+    variant: &'variant Variant,
+}
+
+impl<'variant> TracedPayloadVariant<'variant> {
+    fn new(enum_name: &'variant Ident, variant: &'variant Variant) -> Self {
+        Self { enum_name, variant }
+    }
+
+    fn arm(&self) -> TokenStreamTwo {
+        let enum_name = self.enum_name;
+        let variant_name = &self.variant.ident;
+        let tag = variant_name.to_string();
+        match &self.variant.fields {
+            Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                let field_type = &fields.unnamed.first().expect("one field checked").ty;
+                quote! {
+                    #tag => {
+                        let payload = <#field_type as ::nota_next::NotaDecodeTraced>::from_nota_block_traced(&children[1])?;
+                        let (payload_value, payload_schema) = payload.into_parts();
+                        ::std::result::Result::Ok(::nota_next::DecodedWithSchema::new(
+                            #enum_name::#variant_name(payload_value),
+                            ::nota_next::InstanceSchema::new(
+                                expected,
+                                ::nota_next::InstanceSchemaBody::EnumPayload(::std::option::Option::Some(::std::boxed::Box::new(payload_schema))),
+                            ),
+                        ))
+                    }
+                }
+            }
+            Fields::Unnamed(_) => Error::new_spanned(
+                variant_name,
+                "NotaDecodeTraced enum payload variants must carry exactly one unnamed field",
+            )
+            .to_compile_error(),
+            Fields::Named(fields) => Error::new_spanned(
+                fields,
+                "NotaDecodeTraced enum payload variants must carry one unnamed field, not named fields",
+            )
+            .to_compile_error(),
+            Fields::Unit => {
+                Error::new_spanned(variant_name, "unit variants are handled by the atom branch")
+                    .to_compile_error()
+            }
+        }
+    }
+}
+
+struct GenericsWithTracedBound {
+    generics: Generics,
+}
+
+impl GenericsWithTracedBound {
+    fn new(generics: Generics) -> Self {
+        Self { generics }
+    }
+
+    fn generics(mut self) -> Generics {
+        for parameter in self.generics.params.iter_mut() {
+            if let GenericParam::Type(type_parameter) = parameter {
+                type_parameter
+                    .bounds
+                    .push(syn::parse_quote!(::nota_next::NotaDecodeTraced));
+            }
+        }
+        self.generics
     }
 }
