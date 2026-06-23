@@ -122,15 +122,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "nota-next"
+name = "nota"
 version = "0.5.1"
 dependencies = [
- "nota-next-derive",
+ "nota-derive",
  "rkyv",
 ]
 
 [[package]]
-name = "nota-next-derive"
+name = "nota-derive"
 version = "0.3.0"
 dependencies = [
  "proc-macro2",

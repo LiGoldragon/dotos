@@ -1,4 +1,4 @@
-use nota_next::{
+use nota::{
     AtomShape, BlockShape, CaptureName, DelimitedShape, Document, MacroCandidate, MacroDelimiter,
     MacroMatch, MacroNodeDefinition, MacroObjectCount, MacroRegistry, Pattern, PatternElement,
     PositionPredicate, StructuralMacroError, StructuralMacroNode, StructuralMacroNodeError,

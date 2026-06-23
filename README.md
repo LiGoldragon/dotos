@@ -1,6 +1,6 @@
-# nota-next
+# nota
 
-`nota-next` is the replacement implementation of NOTA's structural reader and
+`nota` is the replacement implementation of NOTA's structural reader and
 value codec. It reads delimiter-balanced NOTA into blocks, keeps source spans,
 exposes recursive object queries, and classifies atoms as structural
 candidates.

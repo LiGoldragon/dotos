@@ -9,7 +9,7 @@
 //! position — proving the trace rides the same type-directed traversal that
 //! validates the value.
 
-use nota_next::{
+use nota::{
     InstanceSchema, InstanceSchemaBody, NotaDecode, NotaDecodeTraced, NotaSource, TypeReference,
 };
 

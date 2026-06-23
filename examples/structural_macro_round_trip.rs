@@ -6,7 +6,7 @@
 //! cargo run --example structural_macro_round_trip
 //! ```
 
-use nota_next::{
+use nota::{
     BlockShape, CaptureName, MacroCandidate, MacroMatch, PositionPredicate, StructuralMacroError,
     StructuralMacroNode, StructuralMacroNodeError, StructuralVariant, StructuralVariantSet,
 };

@@ -1,10 +1,10 @@
 # Intent
 
-`nota-next` is the new NOTA implementation for the schema-derived stack.
+`nota` is the new NOTA implementation for the schema-derived stack.
 
 Psyche intent:
 
-*The raw NOTA replacement repository is nota-next. It is the new NOTA
+*The raw NOTA replacement repository is nota. It is the new NOTA
 implementation, not a branch-only temporary surface.*
 
 *NOTA is the library that gives methods on raw delimiter structures: factual
@@ -36,7 +36,7 @@ tagged/data-carrying macro variant.*
 
 *The `@` at-binding declaration sigil is retired. The earlier `Name@{...}`
 struct-like, `Name@[...]` enum-like, and `name@(Reference ...)` member-binding
-forms are removed; nota-next does not parse `@` as a declaration/binding sigil.
+forms are removed; nota does not parse `@` as a declaration/binding sigil.
 Schema declaration meaning is carried by position and delimiter shape read
 through the typed macro-node layer, not by an `@` open-delimiter interface.
 Parentheses remain the composite/type-reference and macro-call argument shape

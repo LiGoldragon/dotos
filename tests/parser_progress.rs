@@ -8,7 +8,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use nota_next::Document;
+use nota::Document;
 
 fn parse_terminates(input: &str) -> bool {
     let owned = input.to_string();
@@ -31,6 +31,9 @@ fn parser_terminates_on_stray_pipe_close() {
         "( |) )",
         "(record [|]x)",
     ] {
-        assert!(parse_terminates(input), "parser did not terminate on {input:?}");
+        assert!(
+            parse_terminates(input),
+            "parser did not terminate on {input:?}"
+        );
     }
 }

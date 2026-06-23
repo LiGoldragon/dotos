@@ -1,6 +1,6 @@
 # Architecture
 
-`nota-next` owns the raw NOTA structural floor.
+`nota` owns the raw NOTA structural floor.
 
 ## Planes
 
@@ -24,8 +24,8 @@
 - `NotaBody`, `NotaBodyDecode`, and `NotaBodyEncode` are the shared
   inner-object-stream codec layer. A matched file body or delimited block
   yields a body; the expected Rust type decides how to read that ordered stream.
-- `nota-next-derive` is the proc-macro companion crate re-exported by
-  `nota-next`. It derives `NotaDecode` and `NotaEncode` for named structs,
+- `nota-derive` is the proc-macro companion crate re-exported by
+  `nota`. It derives `NotaDecode` and `NotaEncode` for named structs,
   one-field tuple newtypes, unit enum variants, one-payload enum variants, and
   enum variants with multiple unnamed fields encoded as `(Variant (field1
   field2 ...))`. Named struct derive emits body decode/encode first; ordinary
@@ -70,7 +70,7 @@
   expose the matched block's inner `NotaBody`, not the wrapper delimiter, so the
   next semantic parser always receives body contents. The mechanism is
   semantic-neutral: schema-next may register struct/enum/newtype patterns, but
-  nota-next only matches atoms, delimiters, literals, and rest captures. A
+  nota only matches atoms, delimiters, literals, and rest captures. A
   delimited pattern can carry a recursive `Pattern` over that block's children,
   giving consumers arbitrarily nested structural constraints without recursive
   text-template logic.
@@ -113,15 +113,15 @@ captures mean and how the chosen variant is written back to source. NOTA does
 not discover macro meaning through a global parser.
 
 The schema layer assigns declaration meaning to pipe-parenthesis and
-pipe-brace, but `nota-next` only reports those delimiter shapes and their
+pipe-brace, but `nota` only reports those delimiter shapes and their
 children. It does not promote macro heads, validate symbol case, or decide
 whether a parenthesized object is a variant, a macro call, or ordinary data.
 
 The closed delimiter set is the three base pairs — parenthesis, square-bracket,
 brace — plus three piped variants — pipe-text, pipe-parenthesis, pipe-brace
 (Spirit `j9du`). Pipe-text is the bracket-safe / multiline string; the other two
-`nota-next` reports as `PipeParenthesis` / `PipeBrace` delimited blocks without
-interpreting them. The schema layer (not `nota-next`) assigns them:
+`nota` reports as `PipeParenthesis` / `PipeBrace` delimited blocks without
+interpreting them. The schema layer (not `nota`) assigns them:
 pipe-parenthesis `(| … |)` is the generic-declaration construct (Spirit `hh3z`)
 and pipe-brace `{| … |}` is the trait/impl construct (Spirit `bpyu`).
 

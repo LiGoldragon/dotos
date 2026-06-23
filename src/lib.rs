@@ -6,7 +6,7 @@
 //! values, while higher layers own schema type vocabulary, fields, imports,
 //! declarations, and macros.
 
-extern crate self as nota_next;
+extern crate self as nota;
 
 mod codec;
 mod instance_schema;
@@ -30,7 +30,7 @@ pub use macros::{
     StructuralMacroError, StructuralMacroNode, StructuralMacroNodeError, StructuralVariant,
     StructuralVariantConflict, StructuralVariantError, StructuralVariantSet,
 };
-pub use nota_next_derive::{NotaDecode, NotaDecodeTraced, NotaEncode, StructuralMacroNode};
+pub use nota_derive::{NotaDecode, NotaDecodeTraced, NotaEncode, StructuralMacroNode};
 pub use parser::{
     Atom, AtomClassification, Block, Delimiter, Document, NotaError, PipeText, SourcePosition,
     SourceSpan, StructureHeader, StructureShape, StructureSlot,

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use nota_next::{
+use nota::{
     Block, Delimiter, Document, NotaDecode, NotaDecodeError, NotaDocumentEncode, NotaEncode,
     NotaNamedDocumentFieldDecode, NotaNamedDocumentFieldEncode, NotaSource,
 };
@@ -213,7 +213,7 @@ fn derive_body_parser_validates_field_count() {
 }
 
 mod local_result_alias {
-    use nota_next::{NotaDecode, NotaEncode, NotaSource};
+    use nota::{NotaDecode, NotaEncode, NotaSource};
 
     type Result<Value> = std::result::Result<Value, String>;
 

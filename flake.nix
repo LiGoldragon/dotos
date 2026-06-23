@@ -1,5 +1,5 @@
 {
-  description = "nota-next — structural NOTA reader for the schema-derived stack";
+  description = "nota — structural NOTA reader for the schema-derived stack";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -30,7 +30,7 @@
         checks = {
           build = craneLib.cargoBuild (commonArguments // { inherit cargoArtifacts; });
           test = craneLib.cargoTest (commonArguments // { inherit cargoArtifacts; });
-          design-examples = pkgs.runCommand "nota-next-design-examples" { } ''
+          design-examples = pkgs.runCommand "nota-design-examples" { } ''
             grep -R "design_example_source_spans_propagate_through_nested_blocks" ${src}/tests/design_examples.rs >/dev/null
             grep -R "design_example_reader_exposes_candidates_not_schema_semantics" ${src}/tests/design_examples.rs >/dev/null
             grep -R "design_example_pipe_delimiters_are_recursive_blocks" ${src}/tests/design_examples.rs >/dev/null
@@ -39,21 +39,21 @@
             grep -R "design_example_structure_header_marks_slot_truncation" ${src}/tests/design_examples.rs >/dev/null
             touch $out
           '';
-          no-escaped-newline-nota-fixtures = pkgs.runCommand "nota-next-no-escaped-newline-nota-fixtures" { } ''
+          no-escaped-newline-nota-fixtures = pkgs.runCommand "nota-no-escaped-newline-nota-fixtures" { } ''
             if grep -R -n -E 'let source = ".*\\n' ${src}/tests; then
               echo 'inline NOTA fixtures must use spaces or real newlines in raw strings, not \n escapes' >&2
               exit 1
             fi
             touch $out
           '';
-          no-production-free-functions = pkgs.runCommand "nota-next-no-production-free-functions" { } ''
+          no-production-free-functions = pkgs.runCommand "nota-no-production-free-functions" { } ''
             if grep -R -n -E '^(pub(\([^)]*\))? )?fn ' ${src}/src; then
               echo "production Rust must not use module-level free functions" >&2
               exit 1
             fi
             touch $out
           '';
-          operator-271-closed-claims = pkgs.runCommand "nota-next-operator-271-closed-claims" { } ''
+          operator-271-closed-claims = pkgs.runCommand "nota-operator-271-closed-claims" { } ''
             # Architectural-truth witnesses for operator 271 claims 2 and 3.
             # The Rust test file at tests/operator_271_closed_claims.rs runs
             # through cargo test; this Nix check verifies each named witness
@@ -84,7 +84,7 @@
             grep -R "derive_crate_carries_no_zst_method_holders" ${src}/tests/operator_271_closed_claims.rs >/dev/null
             touch $out
           '';
-          derive-crate-no-zst-method-holders = pkgs.runCommand "nota-next-derive-crate-no-zst-method-holders" { } ''
+          derive-crate-no-zst-method-holders = pkgs.runCommand "nota-derive-crate-no-zst-method-holders" { } ''
             # Pair-rule sweep per skills/architectural-truth-tests.md
             # §"Pair-rule sweeps". The derive crate hosts the single-field
             # wrapper pattern (validated by designer 448); the same scope
@@ -106,7 +106,7 @@
           });
         };
         devShells.default = pkgs.mkShell {
-          name = "nota-next";
+          name = "nota";
           packages = [ pkgs.jujutsu toolchain ];
         };
       });

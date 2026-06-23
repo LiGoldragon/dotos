@@ -1,4 +1,4 @@
-//! Proc-macro derives for `nota-next`.
+//! Proc-macro derives for `nota`.
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStreamTwo;
@@ -77,8 +77,8 @@ enum CodecDirection {
 impl CodecDirection {
     fn bound(self) -> TokenStreamTwo {
         match self {
-            Self::Decode => quote!(::nota_next::NotaDecode),
-            Self::Encode => quote!(::nota_next::NotaEncode),
+            Self::Decode => quote!(::nota::NotaDecode),
+            Self::Encode => quote!(::nota::NotaEncode),
         }
     }
 }
@@ -193,8 +193,8 @@ impl StructDerive {
                 };
                 let document_impl = if self.attributes.known_root() {
                     quote! {
-                        impl #implementation_generics ::nota_next::NotaDocumentDecode for #name #type_generics #where_clause {
-                            fn from_nota_document_body(body: &::nota_next::NotaDocumentBody<'_>) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
+                        impl #implementation_generics ::nota::NotaDocumentDecode for #name #type_generics #where_clause {
+                            fn from_nota_document_body(body: &::nota::NotaDocumentBody<'_>) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
                                 Self::from_body_objects(body.root_objects())
                             }
                         }
@@ -204,9 +204,9 @@ impl StructDerive {
                 };
                 quote! {
                     impl #implementation_generics #name #type_generics #where_clause {
-                        pub fn from_body_objects(objects: &[::nota_next::Block]) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
+                        pub fn from_body_objects(objects: &[::nota::Block]) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
                             if objects.len() != #field_count {
-                                return Err(::nota_next::NotaDecodeError::ExpectedRootCount {
+                                return Err(::nota::NotaDecodeError::ExpectedRootCount {
                                     type_name: #type_name,
                                     expected: #field_count,
                                     found: objects.len(),
@@ -218,18 +218,18 @@ impl StructDerive {
                             })
                         }
                     }
-                    impl #implementation_generics ::nota_next::NotaBodyDecode for #name #type_generics #where_clause {
-                        fn from_nota_body(body: &::nota_next::NotaBody<'_>) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
+                    impl #implementation_generics ::nota::NotaBodyDecode for #name #type_generics #where_clause {
+                        fn from_nota_body(body: &::nota::NotaBody<'_>) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
                             Self::from_body_objects(body.root_objects())
                         }
                     }
-                    impl #implementation_generics ::nota_next::NotaDecode for #name #type_generics #where_clause {
-                        fn from_nota_block(block: &::nota_next::Block) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
-                            let body = ::nota_next::NotaBlock::new(block).expect_body(
-                                ::nota_next::Delimiter::Parenthesis,
+                    impl #implementation_generics ::nota::NotaDecode for #name #type_generics #where_clause {
+                        fn from_nota_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
+                            let body = ::nota::NotaBlock::new(block).expect_body(
+                                ::nota::Delimiter::Parenthesis,
                                 #type_name,
                             )?;
-                            <Self as ::nota_next::NotaBodyDecode>::from_nota_body(&body)
+                            <Self as ::nota::NotaBodyDecode>::from_nota_body(&body)
                         }
                     }
                     #document_impl
@@ -238,9 +238,9 @@ impl StructDerive {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
-                    impl #implementation_generics ::nota_next::NotaDecode for #name #type_generics #where_clause {
-                        fn from_nota_block(block: &::nota_next::Block) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
-                            Ok(Self(<#field_type as ::nota_next::NotaDecode>::from_nota_block(block)?))
+                    impl #implementation_generics ::nota::NotaDecode for #name #type_generics #where_clause {
+                        fn from_nota_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
+                            Ok(Self(<#field_type as ::nota::NotaDecode>::from_nota_block(block)?))
                         }
                     }
                 }
@@ -276,9 +276,9 @@ impl StructDerive {
                 };
                 let document_impl = if self.attributes.known_root() {
                     quote! {
-                        impl #implementation_generics ::nota_next::NotaDocumentEncode for #name #type_generics #where_clause {
-                            fn to_nota_document_body(&self) -> ::nota_next::NotaDocumentEncoding {
-                                <Self as ::nota_next::NotaBodyEncode>::to_nota_body(self)
+                        impl #implementation_generics ::nota::NotaDocumentEncode for #name #type_generics #where_clause {
+                            fn to_nota_document_body(&self) -> ::nota::NotaDocumentEncoding {
+                                <Self as ::nota::NotaBodyEncode>::to_nota_body(self)
                             }
                         }
                     }
@@ -286,17 +286,17 @@ impl StructDerive {
                     quote! {}
                 };
                 quote! {
-                    impl #implementation_generics ::nota_next::NotaBodyEncode for #name #type_generics #where_clause {
-                        fn to_nota_body(&self) -> ::nota_next::NotaBodyEncoding {
-                            ::nota_next::NotaBodyEncoding::new(vec![
+                    impl #implementation_generics ::nota::NotaBodyEncode for #name #type_generics #where_clause {
+                        fn to_nota_body(&self) -> ::nota::NotaBodyEncoding {
+                            ::nota::NotaBodyEncoding::new(vec![
                                 #(#body_fields,)*
                             ])
                         }
                     }
-                    impl #implementation_generics ::nota_next::NotaEncode for #name #type_generics #where_clause {
+                    impl #implementation_generics ::nota::NotaEncode for #name #type_generics #where_clause {
                         fn to_nota(&self) -> String {
-                            <Self as ::nota_next::NotaBodyEncode>::to_nota_body(self)
-                                .to_delimited_nota(::nota_next::Delimiter::Parenthesis)
+                            <Self as ::nota::NotaBodyEncode>::to_nota_body(self)
+                                .to_delimited_nota(::nota::Delimiter::Parenthesis)
                         }
                     }
                     #document_impl
@@ -304,9 +304,9 @@ impl StructDerive {
             }
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 quote! {
-                    impl #implementation_generics ::nota_next::NotaEncode for #name #type_generics #where_clause {
+                    impl #implementation_generics ::nota::NotaEncode for #name #type_generics #where_clause {
                         fn to_nota(&self) -> String {
-                            ::nota_next::NotaEncode::to_nota(&self.0)
+                            ::nota::NotaEncode::to_nota(&self.0)
                         }
                     }
                 }
@@ -342,11 +342,11 @@ impl<'field> FieldDecode<'field> {
         let attributes = FieldNotaAttributes::from_attributes(&self.field.attrs)?;
         if let Some(body_name) = attributes.name() {
             return Ok(quote! {
-                #name: <#field_type as ::nota_next::NotaNamedBodyFieldDecode>::from_nota_named_body_field(#body_name, &children[#index])?
+                #name: <#field_type as ::nota::NotaNamedBodyFieldDecode>::from_nota_named_body_field(#body_name, &children[#index])?
             });
         }
         Ok(quote! {
-            #name: <#field_type as ::nota_next::NotaDecode>::from_nota_block(&children[#index])?
+            #name: <#field_type as ::nota::NotaDecode>::from_nota_block(&children[#index])?
         })
     }
 }
@@ -365,11 +365,11 @@ impl<'field> FieldEncode<'field> {
         let attributes = FieldNotaAttributes::from_attributes(&self.field.attrs)?;
         if attributes.name().is_some() {
             return Ok(quote! {
-                ::nota_next::NotaNamedBodyFieldEncode::to_nota_named_body_field(&self.#name)
+                ::nota::NotaNamedBodyFieldEncode::to_nota_named_body_field(&self.#name)
             });
         }
         Ok(quote! {
-            ::nota_next::NotaEncode::to_nota(&self.#name)
+            ::nota::NotaEncode::to_nota(&self.#name)
         })
     }
 }
@@ -417,14 +417,14 @@ impl EnumDerive {
             .filter(|variant| !matches!(variant.fields, Fields::Unit))
             .map(|variant| PayloadVariantDecode::new(&name, variant).arm());
         quote! {
-            impl #implementation_generics ::nota_next::NotaBodyDecode for #name #type_generics #where_clause {
-                fn from_nota_body(body: &::nota_next::NotaBody<'_>) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
+            impl #implementation_generics ::nota::NotaBodyDecode for #name #type_generics #where_clause {
+                fn from_nota_body(body: &::nota::NotaBody<'_>) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
                     let root_objects = body.root_objects();
                     if root_objects.len() == 1 {
                         if let Some(variant) = root_objects[0].demote_to_string() {
                             return match variant {
                                 #(#unit_variants)*
-                                other => Err(::nota_next::NotaDecodeError::UnknownVariant {
+                                other => Err(::nota::NotaDecodeError::UnknownVariant {
                                     enum_name: #enum_name,
                                     variant: other.to_owned(),
                                 }),
@@ -432,30 +432,30 @@ impl EnumDerive {
                         }
                     }
                     let children = body.expect_fields(#enum_name, 2)?;
-                    let variant = children[0].demote_to_string().ok_or(::nota_next::NotaDecodeError::ExpectedAtom {
+                    let variant = children[0].demote_to_string().ok_or(::nota::NotaDecodeError::ExpectedAtom {
                         type_name: "enum variant",
                     })?;
                     match variant {
                         #(#payload_variants)*
-                        other => Err(::nota_next::NotaDecodeError::UnknownVariant {
+                        other => Err(::nota::NotaDecodeError::UnknownVariant {
                             enum_name: #enum_name,
                             variant: other.to_owned(),
                         }),
                     }
                 }
             }
-            impl #implementation_generics ::nota_next::NotaDecode for #name #type_generics #where_clause {
-                fn from_nota_block(block: &::nota_next::Block) -> ::std::result::Result<Self, ::nota_next::NotaDecodeError> {
+            impl #implementation_generics ::nota::NotaDecode for #name #type_generics #where_clause {
+                fn from_nota_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
                     if block.demote_to_string().is_some() {
                         let root_objects = ::std::slice::from_ref(block);
-                        let body = ::nota_next::NotaBody::new(root_objects);
-                        return <Self as ::nota_next::NotaBodyDecode>::from_nota_body(&body);
+                        let body = ::nota::NotaBody::new(root_objects);
+                        return <Self as ::nota::NotaBodyDecode>::from_nota_body(&body);
                     }
-                    let body = ::nota_next::NotaBlock::new(block).expect_body(
-                        ::nota_next::Delimiter::Parenthesis,
+                    let body = ::nota::NotaBlock::new(block).expect_body(
+                        ::nota::Delimiter::Parenthesis,
                         #enum_name,
                     )?;
-                    <Self as ::nota_next::NotaBodyDecode>::from_nota_body(&body)
+                    <Self as ::nota::NotaBodyDecode>::from_nota_body(&body)
                 }
             }
         }
@@ -472,20 +472,20 @@ impl EnumDerive {
             .iter()
             .map(|variant| VariantEncode::new(&name, variant).body_arm());
         quote! {
-            impl #implementation_generics ::nota_next::NotaBodyEncode for #name #type_generics #where_clause {
-                fn to_nota_body(&self) -> ::nota_next::NotaBodyEncoding {
+            impl #implementation_generics ::nota::NotaBodyEncode for #name #type_generics #where_clause {
+                fn to_nota_body(&self) -> ::nota::NotaBodyEncoding {
                     match self {
                         #(#arms)*
                     }
                 }
             }
-            impl #implementation_generics ::nota_next::NotaEncode for #name #type_generics #where_clause {
+            impl #implementation_generics ::nota::NotaEncode for #name #type_generics #where_clause {
                 fn to_nota(&self) -> String {
-                    let body = <Self as ::nota_next::NotaBodyEncode>::to_nota_body(self);
+                    let body = <Self as ::nota::NotaBodyEncode>::to_nota_body(self);
                     if body.fields().len() == 1 {
                         body.to_nota()
                     } else {
-                        body.to_delimited_nota(::nota_next::Delimiter::Parenthesis)
+                        body.to_delimited_nota(::nota::Delimiter::Parenthesis)
                     }
                 }
             }
@@ -531,7 +531,7 @@ impl<'variant> PayloadVariantDecode<'variant> {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
-                    #tag => Ok(#enum_name::#variant_name(<#field_type as ::nota_next::NotaDecode>::from_nota_block(&children[1])?)),
+                    #tag => Ok(#enum_name::#variant_name(<#field_type as ::nota::NotaDecode>::from_nota_block(&children[1])?)),
                 }
             }
             Fields::Unnamed(fields) => {
@@ -540,13 +540,13 @@ impl<'variant> PayloadVariantDecode<'variant> {
                     let field_type = &field.ty;
                     let index = Index::from(index);
                     quote! {
-                        <#field_type as ::nota_next::NotaDecode>::from_nota_block(&payload_children[#index])?
+                        <#field_type as ::nota::NotaDecode>::from_nota_block(&payload_children[#index])?
                     }
                 });
                 quote! {
                     #tag => {
-                        let payload_children = ::nota_next::NotaBlock::new(&children[1]).expect_children(
-                            ::nota_next::Delimiter::Parenthesis,
+                        let payload_children = ::nota::NotaBlock::new(&children[1]).expect_children(
+                            ::nota::Delimiter::Parenthesis,
                             #tag,
                             #field_count,
                         )?;
@@ -584,16 +584,16 @@ impl<'variant> VariantEncode<'variant> {
         match &self.variant.fields {
             Fields::Unit => quote! {
                 #enum_name::#variant_name => {
-                    ::nota_next::NotaBodyEncoding::new(vec![#tag.to_owned()])
+                    ::nota::NotaBodyEncoding::new(vec![#tag.to_owned()])
                 }
             },
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let binding = format_ident!("payload");
                 quote! {
                     #enum_name::#variant_name(#binding) => {
-                        ::nota_next::NotaBodyEncoding::new(vec![
+                        ::nota::NotaBodyEncoding::new(vec![
                             #tag.to_owned(),
-                            ::nota_next::NotaEncode::to_nota(#binding),
+                            ::nota::NotaEncode::to_nota(#binding),
                         ])
                     }
                 }
@@ -604,15 +604,15 @@ impl<'variant> VariantEncode<'variant> {
                     .collect::<Vec<_>>();
                 let encoded_fields = bindings.iter().map(|binding| {
                     quote! {
-                        ::nota_next::NotaEncode::to_nota(#binding)
+                        ::nota::NotaEncode::to_nota(#binding)
                     }
                 });
                 quote! {
                     #enum_name::#variant_name(#(#bindings),*) => {
-                        let payload = ::nota_next::Delimiter::Parenthesis.wrap([
+                        let payload = ::nota::Delimiter::Parenthesis.wrap([
                             #(#encoded_fields),*
                         ]);
-                        ::nota_next::NotaBodyEncoding::new(vec![#tag.to_owned(), payload])
+                        ::nota::NotaBodyEncoding::new(vec![#tag.to_owned(), payload])
                     }
                 }
             }
@@ -688,48 +688,48 @@ impl StructuralDerive {
         let encode_arms = variants.iter().map(StructuralVariantDerive::encode_arm);
         let (implementation_generics, type_generics, where_clause) = generics.split_for_impl();
         quote! {
-            impl #implementation_generics ::nota_next::StructuralMacroNode for #name #type_generics #where_clause {
-                type Error = ::nota_next::StructuralMacroNodeError;
+            impl #implementation_generics ::nota::StructuralMacroNode for #name #type_generics #where_clause {
+                type Error = ::nota::StructuralMacroNodeError;
 
-                fn structural_position() -> ::nota_next::PositionPredicate {
-                    ::nota_next::PositionPredicate::named(#node_name)
+                fn structural_position() -> ::nota::PositionPredicate {
+                    ::nota::PositionPredicate::named(#node_name)
                 }
 
-                fn structural_variants() -> Vec<::nota_next::StructuralVariant> {
+                fn structural_variants() -> Vec<::nota::StructuralVariant> {
                     vec![
                         #(#structural_variants,)*
                     ]
                 }
 
-                fn from_structural_block(block: &::nota_next::Block) -> ::std::result::Result<Self, ::nota_next::StructuralMacroError<Self::Error>> {
+                fn from_structural_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::StructuralMacroError<Self::Error>> {
                     let variants =
-                        ::nota_next::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
-                            .map_err(::nota_next::StructuralMacroError::Dispatch)?;
+                        ::nota::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
+                            .map_err(::nota::StructuralMacroError::Dispatch)?;
                     #(#direct_decode_arms)*
-                    let candidate = ::nota_next::MacroCandidate::from_block(Self::structural_position(), block);
+                    let candidate = ::nota::MacroCandidate::from_block(Self::structural_position(), block);
                     match variants.dispatch(&candidate) {
-                        Ok(matched) => Err(::nota_next::StructuralMacroError::MatchedNode(
-                            ::nota_next::StructuralMacroNodeError::UnexpectedVariant {
+                        Ok(matched) => Err(::nota::StructuralMacroError::MatchedNode(
+                            ::nota::StructuralMacroNodeError::UnexpectedVariant {
                                 node: #node_name,
                                 variant: matched.macro_name().to_owned(),
                             }
                         )),
-                        Err(error) => Err(::nota_next::StructuralMacroError::Dispatch(error)),
+                        Err(error) => Err(::nota::StructuralMacroError::Dispatch(error)),
                     }
                 }
 
-                fn from_structural_candidate(candidate: ::nota_next::MacroCandidate<'_>) -> ::std::result::Result<Self, ::nota_next::StructuralMacroError<Self::Error>> {
+                fn from_structural_candidate(candidate: ::nota::MacroCandidate<'_>) -> ::std::result::Result<Self, ::nota::StructuralMacroError<Self::Error>> {
                     if let [block] = candidate.blocks() {
                         return Self::from_structural_block(block);
                     }
                     let variants =
-                        ::nota_next::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
-                            .map_err(::nota_next::StructuralMacroError::Dispatch)?;
+                        ::nota::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
+                            .map_err(::nota::StructuralMacroError::Dispatch)?;
                     let matched = variants
                         .dispatch(&candidate)
-                        .map_err(::nota_next::StructuralMacroError::Dispatch)?;
-                    Err(::nota_next::StructuralMacroError::MatchedNode(
-                        ::nota_next::StructuralMacroNodeError::UnexpectedVariant {
+                        .map_err(::nota::StructuralMacroError::Dispatch)?;
+                    Err(::nota::StructuralMacroError::MatchedNode(
+                        ::nota::StructuralMacroNodeError::UnexpectedVariant {
                             node: #node_name,
                             variant: matched.macro_name().to_owned(),
                         }
@@ -796,7 +796,7 @@ impl StructuralVariantDerive {
                 return (|| -> ::std::result::Result<Self, Self::Error> {
                     Ok(#constructor)
                 })()
-                .map_err(::nota_next::StructuralMacroError::MatchedNode);
+                .map_err(::nota::StructuralMacroError::MatchedNode);
             }
         }
     }
@@ -812,15 +812,15 @@ impl StructuralVariantDerive {
             let field_type = &self.field_types[0];
             return quote! {
                 #enum_name::#variant_name({
-                    let body_blocks: ::std::vec::Vec<&::nota_next::Block> =
+                    let body_blocks: ::std::vec::Vec<&::nota::Block> =
                         block.root_objects().iter().skip(1).collect();
-                    <#field_type as ::nota_next::StructuralMacroNode>::from_structural_candidate(
-                        ::nota_next::MacroCandidate::new(
-                            <#field_type as ::nota_next::StructuralMacroNode>::structural_position(),
+                    <#field_type as ::nota::StructuralMacroNode>::from_structural_candidate(
+                        ::nota::MacroCandidate::new(
+                            <#field_type as ::nota::StructuralMacroNode>::structural_position(),
                             body_blocks,
                         ),
                     )
-                    .map_err(|error| ::nota_next::StructuralMacroNodeError::Field {
+                    .map_err(|error| ::nota::StructuralMacroNodeError::Field {
                         node: #node_name,
                         variant: #variant_text,
                         field: 0usize,
@@ -836,14 +836,14 @@ impl StructuralVariantDerive {
                 #enum_name::#variant_name(
                     {
                         let head_block = block.root_object_at(0).ok_or(
-                            ::nota_next::StructuralMacroNodeError::MissingCapture {
+                            ::nota::StructuralMacroNodeError::MissingCapture {
                                 node: #node_name,
                                 variant: #variant_text,
                                 capture: "field_0",
                             },
                         )?;
-                        <#head_type as ::nota_next::StructuralMacroNode>::from_structural_block(head_block)
-                            .map_err(|error| ::nota_next::StructuralMacroNodeError::Field {
+                        <#head_type as ::nota::StructuralMacroNode>::from_structural_block(head_block)
+                            .map_err(|error| ::nota::StructuralMacroNodeError::Field {
                                 node: #node_name,
                                 variant: #variant_text,
                                 field: 0usize,
@@ -851,15 +851,15 @@ impl StructuralVariantDerive {
                             })?
                     },
                     {
-                        let body_blocks: ::std::vec::Vec<&::nota_next::Block> =
+                        let body_blocks: ::std::vec::Vec<&::nota::Block> =
                             block.root_objects().iter().skip(1).collect();
-                        <#tail_type as ::nota_next::StructuralMacroNode>::from_structural_candidate(
-                            ::nota_next::MacroCandidate::new(
-                                <#tail_type as ::nota_next::StructuralMacroNode>::structural_position(),
+                        <#tail_type as ::nota::StructuralMacroNode>::from_structural_candidate(
+                            ::nota::MacroCandidate::new(
+                                <#tail_type as ::nota::StructuralMacroNode>::structural_position(),
                                 body_blocks,
                             ),
                         )
-                        .map_err(|error| ::nota_next::StructuralMacroNodeError::Field {
+                        .map_err(|error| ::nota::StructuralMacroNodeError::Field {
                             node: #node_name,
                             variant: #variant_text,
                             field: 1usize,
@@ -875,15 +875,15 @@ impl StructuralVariantDerive {
                 #enum_name::#variant_name({
                     let atom_text = block
                         .root_object_at(1usize)
-                        .and_then(::nota_next::Block::demote_to_string)
-                        .ok_or(::nota_next::StructuralMacroNodeError::MissingSlot {
+                        .and_then(::nota::Block::demote_to_string)
+                        .ok_or(::nota::StructuralMacroNodeError::MissingSlot {
                             node: #node_name,
                             variant: #variant_text,
                             capture: "atom",
                             slot: 0usize,
                         })?;
                     <#field_type as ::std::str::FromStr>::from_str(atom_text)
-                        .map_err(|error| ::nota_next::StructuralMacroNodeError::Field {
+                        .map_err(|error| ::nota::StructuralMacroNodeError::Field {
                             node: #node_name,
                             variant: #variant_text,
                             field: 0usize,
@@ -901,8 +901,8 @@ impl StructuralVariantDerive {
                     .shape
                     .direct_field_block(field_index, node_name, variant_text);
                 quote! {
-                    <#field_type as ::nota_next::StructuralMacroNode>::from_structural_block(#block)
-                        .map_err(|error| ::nota_next::StructuralMacroNodeError::Field {
+                    <#field_type as ::nota::StructuralMacroNode>::from_structural_block(#block)
+                        .map_err(|error| ::nota::StructuralMacroNodeError::Field {
                             node: #node_name,
                             variant: #variant_text,
                             field: #field_index,
@@ -1081,56 +1081,56 @@ impl StructuralVariantShape {
     fn variant_value(&self, variant_name: &str, expected: &str) -> TokenStreamTwo {
         match self {
             Self::PascalAtom => quote! {
-                ::nota_next::BlockShape::pascal_atom(Some(::nota_next::CaptureName::new("field_0")))
+                ::nota::BlockShape::pascal_atom(Some(::nota::CaptureName::new("field_0")))
                     .into_structural_variant(#variant_name, #expected)
             },
             Self::Keyword { keyword } => quote! {
-                ::nota_next::BlockShape::literal(#keyword)
+                ::nota::BlockShape::literal(#keyword)
                     .into_structural_variant(#variant_name, #expected)
             },
             Self::Headed { head, arity } => {
                 let arity = *arity as u64;
                 quote! {
-                    ::nota_next::BlockShape::headed_parenthesis(
+                    ::nota::BlockShape::headed_parenthesis(
                         #head,
-                        ::nota_next::MacroObjectCount::Exact(#arity),
-                        Some(::nota_next::CaptureName::new("signature")),
+                        ::nota::MacroObjectCount::Exact(#arity),
+                        Some(::nota::CaptureName::new("signature")),
                     )
                     .into_structural_variant(#variant_name, #expected)
                 }
             }
             Self::HeadedAtom { head } => quote! {
-                ::nota_next::BlockShape::headed_parenthesis(
+                ::nota::BlockShape::headed_parenthesis(
                     #head,
-                    ::nota_next::MacroObjectCount::Exact(2),
-                    Some(::nota_next::CaptureName::new("signature")),
+                    ::nota::MacroObjectCount::Exact(2),
+                    Some(::nota::CaptureName::new("signature")),
                 )
                 .into_structural_variant(#variant_name, #expected)
             },
             Self::HeadedBody { head } => quote! {
-                ::nota_next::BlockShape::headed_parenthesis(
+                ::nota::BlockShape::headed_parenthesis(
                     #head,
-                    ::nota_next::MacroObjectCount::Any,
-                    Some(::nota_next::CaptureName::new("signature")),
+                    ::nota::MacroObjectCount::Any,
+                    Some(::nota::CaptureName::new("signature")),
                 )
                 .into_structural_variant(#variant_name, #expected)
             },
             Self::PascalHead { arity } => {
                 let arity = *arity as u64;
                 quote! {
-                    ::nota_next::BlockShape::pascal_headed_parenthesis(
-                        ::nota_next::MacroObjectCount::Exact(#arity),
-                        ::nota_next::CaptureName::new("field_0"),
-                        Some(::nota_next::CaptureName::new("signature")),
+                    ::nota::BlockShape::pascal_headed_parenthesis(
+                        ::nota::MacroObjectCount::Exact(#arity),
+                        ::nota::CaptureName::new("field_0"),
+                        Some(::nota::CaptureName::new("signature")),
                     )
                     .into_structural_variant(#variant_name, #expected)
                 }
             }
             Self::PascalHeadBody => quote! {
-                ::nota_next::BlockShape::pascal_headed_parenthesis(
-                    ::nota_next::MacroObjectCount::Any,
-                    ::nota_next::CaptureName::new("field_0"),
-                    Some(::nota_next::CaptureName::new("signature")),
+                ::nota::BlockShape::pascal_headed_parenthesis(
+                    ::nota::MacroObjectCount::Any,
+                    ::nota::CaptureName::new("field_0"),
+                    Some(::nota::CaptureName::new("signature")),
                 )
                 .into_structural_variant(#variant_name, #expected)
             },
@@ -1225,7 +1225,7 @@ impl StructuralVariantShape {
                 let child_index = field_index + 1;
                 quote! {
                     block.root_object_at(#child_index)
-                        .ok_or(::nota_next::StructuralMacroNodeError::MissingSlot {
+                        .ok_or(::nota::StructuralMacroNodeError::MissingSlot {
                             node: #node_name,
                             variant: #variant_name,
                             capture: "arguments",
@@ -1235,7 +1235,7 @@ impl StructuralVariantShape {
             }
             Self::PascalHead { .. } if field_index == 0 => quote! {
                 block.root_object_at(0)
-                    .ok_or(::nota_next::StructuralMacroNodeError::MissingCapture {
+                    .ok_or(::nota::StructuralMacroNodeError::MissingCapture {
                         node: #node_name,
                         variant: #variant_name,
                         capture: "field_0",
@@ -1246,7 +1246,7 @@ impl StructuralVariantShape {
                 let slot = field_index - 1;
                 quote! {
                     block.root_object_at(#child_index)
-                        .ok_or(::nota_next::StructuralMacroNodeError::MissingSlot {
+                        .ok_or(::nota::StructuralMacroNodeError::MissingSlot {
                             node: #node_name,
                             variant: #variant_name,
                             capture: "arguments",
@@ -1261,7 +1261,7 @@ impl StructuralVariantShape {
         match self {
             Self::PascalAtom => {
                 let only = &bindings[0];
-                quote!(::nota_next::StructuralMacroNode::to_structural_nota(#only))
+                quote!(::nota::StructuralMacroNode::to_structural_nota(#only))
             }
             Self::Keyword { keyword } => quote!(#keyword.to_owned()),
             Self::HeadedAtom { head } => {
@@ -1272,7 +1272,7 @@ impl StructuralVariantShape {
                 let only = &bindings[0];
                 quote! {
                     {
-                        let body = ::nota_next::StructuralMacroNode::to_structural_nota(#only);
+                        let body = ::nota::StructuralMacroNode::to_structural_nota(#only);
                         if body.is_empty() {
                             format!("({})", #head)
                         } else {
@@ -1286,9 +1286,9 @@ impl StructuralVariantShape {
                     &self.headed_format(head, bindings.len()),
                     proc_macro2::Span::call_site(),
                 );
-                let arguments = bindings
-                    .iter()
-                    .map(|binding| quote!(::nota_next::StructuralMacroNode::to_structural_nota(#binding)));
+                let arguments = bindings.iter().map(
+                    |binding| quote!(::nota::StructuralMacroNode::to_structural_nota(#binding)),
+                );
                 quote!(format!(#format_literal, #(#arguments),*))
             }
             Self::PascalHead { .. } => {
@@ -1296,9 +1296,9 @@ impl StructuralVariantShape {
                     &self.pascal_head_format(bindings.len()),
                     proc_macro2::Span::call_site(),
                 );
-                let arguments = bindings
-                    .iter()
-                    .map(|binding| quote!(::nota_next::StructuralMacroNode::to_structural_nota(#binding)));
+                let arguments = bindings.iter().map(
+                    |binding| quote!(::nota::StructuralMacroNode::to_structural_nota(#binding)),
+                );
                 quote!(format!(#format_literal, #(#arguments),*))
             }
             Self::PascalHeadBody => {
@@ -1306,8 +1306,8 @@ impl StructuralVariantShape {
                 let tail = &bindings[1];
                 quote! {
                     {
-                        let head = ::nota_next::StructuralMacroNode::to_structural_nota(#head);
-                        let body = ::nota_next::StructuralMacroNode::to_structural_nota(#tail);
+                        let head = ::nota::StructuralMacroNode::to_structural_nota(#head);
+                        let body = ::nota::StructuralMacroNode::to_structural_nota(#tail);
                         if body.is_empty() {
                             format!("({})", head)
                         } else {
@@ -1355,10 +1355,8 @@ impl TracedDerive {
         match self.input.data {
             Data::Struct(data) => StructTrace::new(name, generics, data).expand(),
             Data::Enum(data) => EnumTrace::new(name, generics, data).expand(),
-            Data::Union(_) => {
-                Error::new_spanned(name, "NotaDecodeTraced does not support unions")
-                    .to_compile_error()
-            }
+            Data::Union(_) => Error::new_spanned(name, "NotaDecodeTraced does not support unions")
+                .to_compile_error(),
         }
     }
 }
@@ -1392,29 +1390,29 @@ impl StructTrace {
                     .map(|(index, field)| TracedFieldStep::new(index, field).body_named())
                     .collect::<Vec<_>>();
                 quote! {
-                    impl #implementation_generics ::nota_next::NotaDecodeTraced for #name #type_generics #where_clause {
-                        fn instance_reference() -> ::nota_next::TypeReference {
-                            ::nota_next::TypeReference::named(#type_name)
+                    impl #implementation_generics ::nota::NotaDecodeTraced for #name #type_generics #where_clause {
+                        fn instance_reference() -> ::nota::TypeReference {
+                            ::nota::TypeReference::named(#type_name)
                         }
 
                         fn from_nota_block_traced(
-                            block: &::nota_next::Block,
-                        ) -> ::std::result::Result<::nota_next::DecodedWithSchema<Self>, ::nota_next::NotaDecodeError> {
-                            let children = ::nota_next::NotaBlock::new(block).expect_children(
-                                ::nota_next::Delimiter::Parenthesis,
+                            block: &::nota::Block,
+                        ) -> ::std::result::Result<::nota::DecodedWithSchema<Self>, ::nota::NotaDecodeError> {
+                            let children = ::nota::NotaBlock::new(block).expect_children(
+                                ::nota::Delimiter::Parenthesis,
                                 #type_name,
                                 #field_count,
                             )?;
-                            let mut nodes: ::std::vec::Vec<::nota_next::InstanceSchema> =
+                            let mut nodes: ::std::vec::Vec<::nota::InstanceSchema> =
                                 ::std::vec::Vec::with_capacity(#field_count);
                             let value = Self {
                                 #(#field_steps,)*
                             };
-                            ::std::result::Result::Ok(::nota_next::DecodedWithSchema::new(
+                            ::std::result::Result::Ok(::nota::DecodedWithSchema::new(
                                 value,
-                                ::nota_next::InstanceSchema::new(
-                                    <Self as ::nota_next::NotaDecodeTraced>::instance_reference(),
-                                    ::nota_next::InstanceSchemaBody::Struct(nodes),
+                                ::nota::InstanceSchema::new(
+                                    <Self as ::nota::NotaDecodeTraced>::instance_reference(),
+                                    ::nota::InstanceSchemaBody::Struct(nodes),
                                 ),
                             ))
                         }
@@ -1424,21 +1422,21 @@ impl StructTrace {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
-                    impl #implementation_generics ::nota_next::NotaDecodeTraced for #name #type_generics #where_clause {
-                        fn instance_reference() -> ::nota_next::TypeReference {
-                            ::nota_next::TypeReference::named(#type_name)
+                    impl #implementation_generics ::nota::NotaDecodeTraced for #name #type_generics #where_clause {
+                        fn instance_reference() -> ::nota::TypeReference {
+                            ::nota::TypeReference::named(#type_name)
                         }
 
                         fn from_nota_block_traced(
-                            block: &::nota_next::Block,
-                        ) -> ::std::result::Result<::nota_next::DecodedWithSchema<Self>, ::nota_next::NotaDecodeError> {
-                            let inner = <#field_type as ::nota_next::NotaDecodeTraced>::from_nota_block_traced(block)?;
+                            block: &::nota::Block,
+                        ) -> ::std::result::Result<::nota::DecodedWithSchema<Self>, ::nota::NotaDecodeError> {
+                            let inner = <#field_type as ::nota::NotaDecodeTraced>::from_nota_block_traced(block)?;
                             let (inner_value, inner_schema) = inner.into_parts();
-                            ::std::result::Result::Ok(::nota_next::DecodedWithSchema::new(
+                            ::std::result::Result::Ok(::nota::DecodedWithSchema::new(
                                 Self(inner_value),
-                                ::nota_next::InstanceSchema::new(
-                                    <Self as ::nota_next::NotaDecodeTraced>::instance_reference(),
-                                    ::nota_next::InstanceSchemaBody::Newtype(::std::boxed::Box::new(inner_schema)),
+                                ::nota::InstanceSchema::new(
+                                    <Self as ::nota::NotaDecodeTraced>::instance_reference(),
+                                    ::nota::InstanceSchemaBody::Newtype(::std::boxed::Box::new(inner_schema)),
                                 ),
                             ))
                         }
@@ -1475,7 +1473,7 @@ impl<'field> TracedFieldStep<'field> {
         let index = Index::from(self.index);
         quote! {
             #name: {
-                let decoded = <#field_type as ::nota_next::NotaDecodeTraced>::from_nota_block_traced(&children[#index])?;
+                let decoded = <#field_type as ::nota::NotaDecodeTraced>::from_nota_block_traced(&children[#index])?;
                 let (field_value, field_schema) = decoded.into_parts();
                 nodes.push(field_schema);
                 field_value
@@ -1523,7 +1521,7 @@ impl EnumTrace {
         let atom_branch = if unit_arms.is_empty() {
             quote! {
                 if let Some(variant) = block.demote_to_string() {
-                    return ::std::result::Result::Err(::nota_next::NotaDecodeError::UnknownVariant {
+                    return ::std::result::Result::Err(::nota::NotaDecodeError::UnknownVariant {
                         enum_name: #enum_name,
                         variant: variant.to_owned(),
                     });
@@ -1534,40 +1532,40 @@ impl EnumTrace {
                 if let Some(variant) = block.demote_to_string() {
                     let value = match variant {
                         #(#unit_arms)*
-                        other => return ::std::result::Result::Err(::nota_next::NotaDecodeError::UnknownVariant {
+                        other => return ::std::result::Result::Err(::nota::NotaDecodeError::UnknownVariant {
                             enum_name: #enum_name,
                             variant: other.to_owned(),
                         }),
                     };
-                    return ::std::result::Result::Ok(::nota_next::DecodedWithSchema::new(
+                    return ::std::result::Result::Ok(::nota::DecodedWithSchema::new(
                         value,
-                        ::nota_next::InstanceSchema::new(expected, ::nota_next::InstanceSchemaBody::EnumPayload(::std::option::Option::None)),
+                        ::nota::InstanceSchema::new(expected, ::nota::InstanceSchemaBody::EnumPayload(::std::option::Option::None)),
                     ));
                 }
             }
         };
         quote! {
-            impl #implementation_generics ::nota_next::NotaDecodeTraced for #name #type_generics #where_clause {
-                fn instance_reference() -> ::nota_next::TypeReference {
-                    ::nota_next::TypeReference::named(#enum_name)
+            impl #implementation_generics ::nota::NotaDecodeTraced for #name #type_generics #where_clause {
+                fn instance_reference() -> ::nota::TypeReference {
+                    ::nota::TypeReference::named(#enum_name)
                 }
 
                 fn from_nota_block_traced(
-                    block: &::nota_next::Block,
-                ) -> ::std::result::Result<::nota_next::DecodedWithSchema<Self>, ::nota_next::NotaDecodeError> {
-                    let expected = <Self as ::nota_next::NotaDecodeTraced>::instance_reference();
+                    block: &::nota::Block,
+                ) -> ::std::result::Result<::nota::DecodedWithSchema<Self>, ::nota::NotaDecodeError> {
+                    let expected = <Self as ::nota::NotaDecodeTraced>::instance_reference();
                     #atom_branch
-                    let children = ::nota_next::NotaBlock::new(block).expect_body(
-                        ::nota_next::Delimiter::Parenthesis,
+                    let children = ::nota::NotaBlock::new(block).expect_body(
+                        ::nota::Delimiter::Parenthesis,
                         #enum_name,
                     )?;
                     let children = children.expect_fields(#enum_name, 2)?;
-                    let variant = children[0].demote_to_string().ok_or(::nota_next::NotaDecodeError::ExpectedAtom {
+                    let variant = children[0].demote_to_string().ok_or(::nota::NotaDecodeError::ExpectedAtom {
                         type_name: "enum variant",
                     })?;
                     match variant {
                         #(#payload_arms)*
-                        other => ::std::result::Result::Err(::nota_next::NotaDecodeError::UnknownVariant {
+                        other => ::std::result::Result::Err(::nota::NotaDecodeError::UnknownVariant {
                             enum_name: #enum_name,
                             variant: other.to_owned(),
                         }),
@@ -1617,13 +1615,13 @@ impl<'variant> TracedPayloadVariant<'variant> {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
                     #tag => {
-                        let payload = <#field_type as ::nota_next::NotaDecodeTraced>::from_nota_block_traced(&children[1])?;
+                        let payload = <#field_type as ::nota::NotaDecodeTraced>::from_nota_block_traced(&children[1])?;
                         let (payload_value, payload_schema) = payload.into_parts();
-                        ::std::result::Result::Ok(::nota_next::DecodedWithSchema::new(
+                        ::std::result::Result::Ok(::nota::DecodedWithSchema::new(
                             #enum_name::#variant_name(payload_value),
-                            ::nota_next::InstanceSchema::new(
+                            ::nota::InstanceSchema::new(
                                 expected,
-                                ::nota_next::InstanceSchemaBody::EnumPayload(::std::option::Option::Some(::std::boxed::Box::new(payload_schema))),
+                                ::nota::InstanceSchemaBody::EnumPayload(::std::option::Option::Some(::std::boxed::Box::new(payload_schema))),
                             ),
                         ))
                     }
@@ -1661,7 +1659,7 @@ impl GenericsWithTracedBound {
             if let GenericParam::Type(type_parameter) = parameter {
                 type_parameter
                     .bounds
-                    .push(syn::parse_quote!(::nota_next::NotaDecodeTraced));
+                    .push(syn::parse_quote!(::nota::NotaDecodeTraced));
             }
         }
         self.generics

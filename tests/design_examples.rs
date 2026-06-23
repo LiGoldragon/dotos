@@ -1,4 +1,4 @@
-//! Design-illustrating tests for nota-next.
+//! Design-illustrating tests for nota.
 //!
 //! Each test illustrates ONE load-bearing design point of the
 //! structural NOTA reader with a short fixture and a focused
@@ -10,7 +10,7 @@
 //! When a design report cites a test, the test in this file should
 //! be the canonical example.
 
-use nota_next::{Document, StructureHeader, StructureShape};
+use nota::{Document, StructureHeader, StructureShape};
 
 /// Illustrates: every Block carries a SourceSpan that maps back to
 /// the original text by byte offset AND line/column. The span

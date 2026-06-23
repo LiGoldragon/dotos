@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use nota_next::{
+use nota::{
     Block, Delimiter, NotaBlock, NotaBody, NotaBodyDecode, NotaBodyEncode, NotaDecode,
     NotaDecodeError, NotaDocumentBody, NotaDocumentDecode, NotaDocumentEncode,
     NotaDocumentEncoding, NotaEncode, NotaSource,
@@ -214,13 +214,13 @@ fn codec_decodes_and_encodes_collection_values() {
 #[test]
 fn codec_decodes_and_encodes_byte_sequences_as_hex_text() {
     let bytes = NotaSource::new("deadbeef")
-        .parse::<nota_next::ByteSequence>()
+        .parse::<nota::ByteSequence>()
         .expect("byte sequence decodes");
     assert_eq!(bytes.payload(), &[0xde, 0xad, 0xbe, 0xef]);
     assert_eq!(bytes.to_nota(), "deadbeef");
 
     let fixed = NotaSource::new("01020304")
-        .parse::<nota_next::FixedByteSequence<4>>()
+        .parse::<nota::FixedByteSequence<4>>()
         .expect("fixed byte sequence decodes");
     assert_eq!(fixed.payload(), &[0x01, 0x02, 0x03, 0x04]);
     assert_eq!(fixed.to_nota(), "01020304");
@@ -229,12 +229,12 @@ fn codec_decodes_and_encodes_byte_sequences_as_hex_text() {
 #[test]
 fn codec_rejects_noncanonical_byte_sequence_hex() {
     let odd = NotaSource::new("abc")
-        .parse::<nota_next::ByteSequence>()
+        .parse::<nota::ByteSequence>()
         .expect_err("odd hex length rejects");
     assert!(odd.to_string().contains("odd length"));
 
     let wrong_width = NotaSource::new("deadbeef")
-        .parse::<nota_next::FixedByteSequence<2>>()
+        .parse::<nota::FixedByteSequence<2>>()
         .expect_err("wrong fixed width rejects");
     assert!(wrong_width.to_string().contains("expected 4 hex digits"));
 }
@@ -292,7 +292,7 @@ impl NotaBodyDecode for KnownRootExample {
 }
 
 impl NotaBodyEncode for KnownRootExample {
-    fn to_nota_body(&self) -> nota_next::NotaBodyEncoding {
+    fn to_nota_body(&self) -> nota::NotaBodyEncoding {
         NotaDocumentEncoding::new(vec![
             self.name.to_nota(),
             self.imports.to_nota(),
@@ -366,7 +366,7 @@ fn codec_known_root_body_preserves_raw_root_structure_for_callers() {
         KnownRootExample::from_nota_source("core\n[]\n[]").expect("empty body vectors decode");
     let encoding = value.to_nota_document_body();
     let reparsed =
-        nota_next::Document::parse(encoding.to_nota()).expect("known-root body emits legal NOTA");
+        nota::Document::parse(encoding.to_nota()).expect("known-root body emits legal NOTA");
 
     assert_eq!(encoding.fields().len(), 3);
     assert_eq!(reparsed.root_objects().len(), 3);

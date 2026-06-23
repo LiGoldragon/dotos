@@ -1,4 +1,4 @@
-use nota_next::{AtomClassification, Delimiter, Document, NotaError};
+use nota::{AtomClassification, Delimiter, Document, NotaError};
 
 #[test]
 fn parses_ordered_root_objects_and_reemits_from_spans() {

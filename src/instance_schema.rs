@@ -9,7 +9,7 @@
 //! string shape, and no per-type hand-written schema printer — the trace is a
 //! by-product of the same recursion that already validates the value.
 //!
-//! The reference kind held at each node is a nota-next-local [`TypeReference`]
+//! The reference kind held at each node is a nota-local [`TypeReference`]
 //! (a type name plus the structural container forms `Vec` / `Optional` / `Map`
 //! / `FixedBytes`). Higher layers project this into their own schema-value
 //! vocabulary (schema-next's `SourceReference`) and render it through the
@@ -162,8 +162,7 @@ pub trait NotaDecodeTraced: NotaDecode {
 
     /// Decode `block` into `Self` and the per-instance schema captured along
     /// the way.
-    fn from_nota_block_traced(block: &Block)
-    -> Result<DecodedWithSchema<Self>, NotaDecodeError>;
+    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError>;
 }
 
 macro_rules! scalar_traced {
@@ -201,9 +200,7 @@ impl NotaDecodeTraced for crate::ByteSequence {
         TypeReference::named("Bytes")
     }
 
-    fn from_nota_block_traced(
-        block: &Block,
-    ) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
+    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
         let value = <Self as NotaDecode>::from_nota_block(block)?;
         Ok(DecodedWithSchema::new(
             value,
@@ -217,9 +214,7 @@ impl<const WIDTH: usize> NotaDecodeTraced for crate::FixedByteSequence<WIDTH> {
         TypeReference::FixedBytes(WIDTH)
     }
 
-    fn from_nota_block_traced(
-        block: &Block,
-    ) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
+    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
         let value = <Self as NotaDecode>::from_nota_block(block)?;
         Ok(DecodedWithSchema::new(
             value,
@@ -236,13 +231,11 @@ where
         TypeReference::vector(Element::instance_reference())
     }
 
-    fn from_nota_block_traced(
-        block: &Block,
-    ) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
+    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
         // Mirror the blanket `NotaDecode for Vec` traversal: each element is
         // decoded against `Element`, and we keep the per-element schema node.
-        let elements = crate::NotaCollection::new(block)
-            .parse_vector(Element::from_nota_block_traced)?;
+        let elements =
+            crate::NotaCollection::new(block).parse_vector(Element::from_nota_block_traced)?;
         let mut values = Vec::with_capacity(elements.len());
         let mut nodes = Vec::with_capacity(elements.len());
         for decoded in elements {
@@ -252,7 +245,10 @@ where
         }
         Ok(DecodedWithSchema::new(
             values,
-            InstanceSchema::new(Self::instance_reference(), InstanceSchemaBody::Vector(nodes)),
+            InstanceSchema::new(
+                Self::instance_reference(),
+                InstanceSchemaBody::Vector(nodes),
+            ),
         ))
     }
 }
@@ -265,10 +261,9 @@ where
         TypeReference::optional(Inner::instance_reference())
     }
 
-    fn from_nota_block_traced(
-        block: &Block,
-    ) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
-        let decoded = crate::NotaCollection::new(block).parse_option(Inner::from_nota_block_traced)?;
+    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
+        let decoded =
+            crate::NotaCollection::new(block).parse_option(Inner::from_nota_block_traced)?;
         match decoded {
             Some(inner) => {
                 let (value, schema) = inner.into_parts();
@@ -300,9 +295,7 @@ where
         TypeReference::map(Key::instance_reference(), Value::instance_reference())
     }
 
-    fn from_nota_block_traced(
-        block: &Block,
-    ) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
+    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
         // We re-run the map traversal capturing both the value map and the
         // per-pair schema nodes. `parse_map` collects the value map; the
         // capture closures record the schema pairs in iteration order, sharing
@@ -346,9 +339,7 @@ where
         Inner::instance_reference()
     }
 
-    fn from_nota_block_traced(
-        block: &Block,
-    ) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
+    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
         let decoded = Inner::from_nota_block_traced(block)?;
         let (value, schema) = decoded.into_parts();
         Ok(DecodedWithSchema::new(Box::new(value), schema))

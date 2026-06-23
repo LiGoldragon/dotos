@@ -1,11 +1,11 @@
 [package]
-name         = "nota-next-derive"
+name         = "nota-derive"
 version      = "0.3.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
-repository   = "https://github.com/LiGoldragon/nota-next"
-description  = "Proc-macro derives for nota-next value codecs."
+repository   = "https://github.com/LiGoldragon/nota"
+description  = "Proc-macro derives for nota value codecs."
 publish      = false
 
 [lib]

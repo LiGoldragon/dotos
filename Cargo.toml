@@ -1,19 +1,19 @@
 [package]
-name         = "nota-next"
+name         = "nota"
 version = "0.5.1"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
-repository   = "https://github.com/LiGoldragon/nota-next"
+repository   = "https://github.com/LiGoldragon/nota"
 description  = "Structural NOTA reader for the schema-derived stack."
 publish      = false
 
 [lib]
-name = "nota_next"
+name = "nota"
 path = "src/lib.rs"
 
 [dependencies]
-nota-next-derive = { path = "derive" }
+nota-derive = { path = "derive" }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 
 [lints.rust]
