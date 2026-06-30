@@ -16,12 +16,44 @@ delimiter-balanced object blocks and emits a compact first-two-level structure
 header that records delimiter/atom shape and child counts only, so higher
 layers can triage before semantic lowering.
 
+NOTA is a typed text surface: a hack on the text user interface built from
+delimiters, beauty, and typed structure where everything is read as a known type
+in data-type-theory terms, and a well-formatted valid NOTA expression decodes
+reliably to its declared types (Spirit `rnrg`). That typed-text reliability is
+the workspace's reason for rendering structured data as NOTA everywhere. NOTA
+plus schema together form a pure data specification — more specific than Rust,
+which mixes logic with data, and analogous to Cap'n Proto's own spec language —
+the deliberate half-step from text-as-pseudocode toward the fully-typed SEMA
+form, where NOTA always corresponds to a specified object (Spirit `61lk`). The
+bracket-only string form makes any NOTA expression embedding-safe and
+escape-free inside every double-quote host (JSON, Rust raw strings, Nix, YAML,
+TOML, shell args, HTTP bodies, database columns, environment variables, XML
+attributes), because NOTA never emits a double-quote: NOTA is the carrier and the
+schema at each site supplies meaning (Spirit `7y8w`).
+
+Bare atoms are the default string form. A string needs a delimiter only when it
+carries spaces or otherwise-forbidden symbols; bare-eligible strings — topic
+names, symbol-safe schema and type names — stay bare atoms (Spirit `0dsr`). The
+bare-atom punctuation set is broad. A comment requires a double-semicolon marker
+(`;;`); a single semicolon is ordinary bare-atom text (Spirit `laim`).
+Classification is "qualifies as", not "is": a token qualifies as a symbol when it
+is symbol-safe (PascalCase, camelCase, identifier alphabet), and whether it
+actually is a symbol is a type-level question the macro and schema layers decide.
+At parse time NOTA promotes to the higher classification — qualified-symbol over
+string — because demoting later under type context is easy while promoting is
+hard; the schema layer demotes to string-only where its types require it (Spirit
+`fvtf`).
+
 The `@` at-binding declaration sigil is retired. The earlier `Name@{...}`
 struct-like, `Name@[...]` enum-like, and `name@(Reference ...)` member-binding
 forms are removed; `nota` does not parse `@` as a declaration or binding sigil.
-Declaration meaning is carried by position and delimiter shape read through the
-typed macro-node layer, not by an `@` open-delimiter interface. The root schema
-object is implicit from the filename and needs no sigil or outer delimiter.
+The entire `@`-binder surface is abandoned and all `@`-binding parser support is
+removed, so the authored surface is the positional bracket/brace form that
+rejects `@` at source (Spirit `own9`). Declaration meaning is carried by position
+and delimiter shape read through the typed macro-node layer, not by an `@`
+open-delimiter interface. The root schema object is implicit from the filename
+and needs no sigil or outer delimiter; legacy pipe declarations are transitional
+and give way to the positional form.
 
 Macro heads are not sigiled at the raw NOTA layer: a macro name is just a symbol
 candidate until a schema context reads a known schema-node position as a
@@ -75,7 +107,14 @@ tagged or data-carrying macro variant.
   brackets for whitespace-delimited strings, and pipe text for strings carrying
   structural delimiters, `;;`, pipe-close markers, or newlines. Typed `String`
   decoding rejects bracketed or pipe-delimited strings when the decoded text can
-  be written as a bare atom.
+  be written as a bare atom. Delimited NOTA strings come exclusively from the two
+  bracket forms (Spirit `vfjw`, `f8m3`): the canonical inline `[text]`
+  square-bracket string for single-line strings (Spirit `7rrs`), and the
+  four-character bracket-pipe block form for pretty indented multiline string
+  blocks, whose common indentation is stripped on parse, with literal close-marker
+  text escaped rather than the fences widened (Spirit `3qjw`, `bhs5`). One
+  pipe-text shape is kept and literal close markers are escaped instead of adding
+  more fence variants.
 - `NotaDocumentBody` and `NotaDocumentEncoding` are the known-root document
   compatibility helpers over the shared body layer. They expose a file's root
   object stream as the body of the caller's known type, and they format the
@@ -142,6 +181,47 @@ pipe-brace, but `nota` only reports those delimiter shapes and their
 children. It does not promote macro heads, validate symbol case, or decide
 whether a parenthesized object is a variant, a macro call, or ordinary data.
 
+Macros themselves are data, the macro most of all: a macro is a serializable
+data object with a name, position, pattern, and template, where pattern and
+template are data trees rather than text with sigils. Macros pre-assemble,
+serialize, and load as data; reading a schema loads pre-assembled macro data and
+interprets schema data against it. The only code is one small generic
+interpreter, with no per-macro bespoke parsing, and the test is that everything —
+macros included — round-trips through both NOTA text and rkyv bytes (Spirit
+`4itr`). NOTA extension is therefore type-directed structural matching over
+raw-parser nodes that preserves delimiters, counts, sigils, and nesting: a
+structural macro node is a NOTA enum decoded by shape, whose codec matches
+variants in declaration order — most-specific first, first wins — recursively,
+and whose encode emits the matching block, realized through
+`#[derive(StructuralMacroNode)]` with per-variant shape attributes rather than a
+runtime registry or string-name dispatch. The pattern language is a typed enum of
+primitives (arity, atom case, atom sigil, delimiter type, atom literal) so macro
+data stays serializable (Spirit `xai7`). Everything reading NOTA-shaped structure
+above the raw parser goes through these typed structural macro nodes; surviving
+hand-parsing sites are violations to fix, and a shape the nodes cannot express is
+surfaced to the psyche rather than worked around. NOTA itself should have a
+schema whose Rust is schema-derived rather than a hand-maintained parser island,
+and dispatch precedence among competing reference forms — built-in heads, then
+declared macros, then the generic catch-all — is reified as one explicit typed
+NOTA value that every reader and the resolver consult (Spirit `v0n6`).
+
+Macro application and enum declaration share the grouped head-plus-payload form
+`(Foo (A B))`: in an enum declaration `Foo` is the declared type and `A`, `B`
+are variants; in a macro invocation `Foo` is the operator applied to grouped
+arguments (Spirit `fo38`). A user macro is declared inside a namespace with the
+locked positional record `(Macro Input+ Output)` — the `Macro` tag plus one or
+more input shapes plus exactly one output shape — and lives as a registry entry
+resolvable by qualified name, with the explicit `Macro` tag chosen over
+contextual shape-driven matching for introspectability (Spirit `h6fh`). Macro
+loading runs a first indexing pass that collects every macro name from the schema
+and its imports before any macro is invoked, so later passes resolve references
+by name and forward and out-of-order references work across imports, with lazy
+resolution loading a macro only when it is referenced during dispatch; macro
+handlers receive `NotaBody` streams with the outer wrapper delimiters stripped at
+match time, not the wrapper (Spirit `ydpa`). Because each macro's pattern records
+where line breaks, indentation, and spacing belong, a NOTA formatter can be
+derived from the macro definitions themselves (Spirit `5p9s`).
+
 The closed delimiter set is the three base pairs — parenthesis, square-bracket,
 brace — plus three piped variants — pipe-text, pipe-parenthesis, pipe-brace
 (Spirit `j9du`). Pipe-text is the bracket-safe / multiline string; the other two
@@ -165,7 +245,58 @@ change.
 The codec's collection value shapes are structural NOTA values: `Vec<T>` is a
 square-bracket block, `BTreeMap<K, V>` is a brace block of key/value pairs, and
 `Option<T>` is `None` or `(Some value)`. Those are serialization shapes, not
-schema declaration syntax.
+schema declaration syntax. The square bracket is and always has been NOTA's
+vector container delimiter; higher layers may read a vector at a typed position
+as a product or field list, but `[]` itself stays a vector and is never redefined
+as struct syntax (Spirit `qw1j`). An earlier low-certainty exploration that read
+`[]` as struct-and-fields and `()` as enum-and-variants resolved into this
+direction: parentheses carry enum and variant headers and choices while bracket
+content is a vector that a typed position may read as a field list (Spirit
+`ychx`). At a typed position expecting a string or
+string newtype, bracket content reads as string data — a string is a vector of
+characters — so `[]` is not unconditionally a vector (Spirit `voa8`). The brace
+is a strict key-value map: every entry is exactly one key plus one value, with no
+single-token entries, and key-value-ness is low-level NOTA structure that macros
+may consume at schema positions (Spirit `ghw7`).
+
+NOTA structs are positional: position plus the read-time schema encodes meaning,
+with no field-name tags. A plain PascalCase token is a unit variant; a
+parenthesized variant carries data. Every field is always present, with explicit
+`None` for an absent optional value rather than an omitted field (Spirit `vr32`).
+At a slot whose type is already known to be an enum, the authored value may omit
+that enum type name and supply the enum body directly — `((Parse Expression)
+(Render Expression))` is valid where the surrounding slot fixes the outer enum
+type — while variant tags inside the body stay named (Spirit `3sq4`). An enum
+variant with an optional empty payload still renders as a data-carrying record
+such as `(Technology None)`, not as a bare `Technology` atom (Spirit `oqwb`).
+Multi-argument type references and applications use the flat positional form —
+head then arguments inline, as in `Map K V` — rather than a grouped form that
+re-wraps the arguments, since the head already names the construct and the flat
+form stays legible while spending fewer characters (Spirit `wqdi`). Encoders
+avoid over-bracketing: bare-safe atoms encode bare inside typed positions such as
+vectors, bracket forms are reserved for whitespace and delimiter safety, and
+typed projection drops a redundant wrapper delimiter when the enclosing head
+already fixes the payload shape (Spirit `3naf`). Plural record replies expose
+their vector directly in the structure rather than nesting it inside a
+single-field wrapper record (Spirit `vqbt`).
+
+NOTA owns raw structure and serialization shapes — including the value literals
+`None` and `(Some x)` — while the schema layer owns the entire type-name
+vocabulary: scalar names such as `String`, `Integer`, and `Boolean`, and
+composite names such as `Vec`, `Optional`, and `Map`. All type-name keywords
+belong to schema; splitting only composites into schema while leaving scalar
+names in NOTA would be inconsistent (Spirit `sqx6`). The composite type
+constructors are nevertheless NOTA-layer datatype objects that schema reads, not
+schema-only sugar: `Vec`, `Option`, and `KeyValue` (named `KeyValue` rather than
+`Map`, which risks reading as a verb, and followed by key type then value type),
+where a plain type-reference position can name scalars or composites without
+declaring a new type while declarations use the positional struct, enum, and
+newtype forms (Spirit `2dzp`). The three NOTA delimiters map to the three schema
+sections: parentheses hold enum and variant headers and choices, square brackets
+hold positional struct field bodies, and braces hold the name-value namespace of
+type names to definitions (Spirit `6oun`). That namespace section is a key-value
+map of user-defined types — keys are type names, values are definitions — not a
+flat sequence of separate declarations (Spirit `5myr`).
 
 The codec has a shared body-content path. `NotaSource::parse` remains the
 single-root-object path for ordinary values; after it matches the outer
@@ -177,3 +308,68 @@ objects to the same body logic through `NotaDocumentDecode`. The structural
 match decides where the body begins. The expected type decides whether the body
 is read as positional struct fields, a vector stream, an enum-like variant
 body, or another value shape.
+
+## Binary boundary
+
+NOTA is the text projection at one edge of a binary system; it is not the
+transport. rkyv binary is the single encoded form, living both in the database as
+the SEMA body at rest and on the wire as component messaging, with one
+`AssembledSchema` reading those bytes in both places, while NOTA is the text
+projection at the CLI and inspection edge — and tests prove both boundaries, not
+only the in-memory Rust types (Spirit `a9sq`). NOTA mirrors the rkyv
+self-describing root-plus-relative-pointer box layout: the root stays compact
+with sized fields inline, while unsized or growing fields (`String`, `Vec`,
+`Option`-of-unsized, nested records) become boxes appended after the root in
+declaration order, so no box-index naming is needed and a coordinate like
+`(vector-N element-M)` reads the M-th element of the N-th box vector as a direct
+projection of the binary form (Spirit `n5ch`).
+
+The text/binary boundary lives in the client. Clients translate NOTA text into
+binary protocol data and render typed replies and traces back to users; daemons
+stay free of NOTA decoding and avoid string surfaces except for genuine
+user-authored string payloads (Spirit `b1vi`). A CLI that accepts NOTA
+structurally forces the daemon protocol to be binary, because the CLI is what
+translates NOTA into the binary protocol calls the daemon receives (Spirit
+`o2xk`). A daemon binary therefore compiles with no NOTA code at all: NOTA
+encode/decode is a thin-CLI text-edge concern, the daemon speaks binary and rkyv
+exclusively and must not pull `nota` into its artifact, and component crates gate
+NOTA behind a `nota-text` feature that only the CLI binary enables, pairing with
+`signal` being NOTA-free (Spirit `t4gd`). NOTA encode and decode derives are
+accordingly optional generated surfaces applied only where needed; daemon-only
+components stay binary-only over rkyv signal frames and carry no NOTA decoding
+code (Spirit `cyik`). Daemon startup takes one pre-generated rkyv `Configure`
+message — a deploy helper or CLI authors and encodes the NOTA — so bootstrap
+needs no manager: the daemon opens its named store, applies `Configure` as the
+first config when virgin or self-resumes when populated, and the same `Configure`
+type is accepted live over the meta socket for runtime reconfiguration, making
+bootstrap and runtime config one vocabulary and the baseline meta operation of
+every meta-signal-component contract (Spirit `ur16`).
+
+Component feedback, status, and errors are typed self-descriptive NOTA enums and
+structs whose names carry the meaning, so a well-named result type needs no
+message string; the feedback language is enums and structs decoded through NOTA,
+specializing the strings-only-at-the-edges rule to the messaging surface (Spirit
+`bexd`). Each typed symbol — type, variant, field, operation, route — has a
+fully-qualified `SymbolPath` identity through the interface's global namespace,
+the canonical machine-readable universal symbol form; machines reason about
+identity via the qualified path and NOTA renders that same path as human-readable
+text at user-facing edges (Spirit `r0le`). Help retrieval is always one NOTA
+argument: every component supports `(Help)`, `(Help Main)`, `(Help Verb)`, and
+nested forms in its NOTA vocabulary rather than bare-word CLI args, with help docs
+likely auto-wired through the signal-channel macro (Spirit `hetk`). Trace events
+render as NOTA at the client edge: a trace event type derives its NOTA codec from
+its schema definition, so display reduces to the standard NOTA encoder rather than
+ad-hoc `Display` formatting, and the rendered string is itself the typed-data text
+projection (Spirit `8p0r`). `TraceEvent` is a transparent newtype or direct
+object-name trace root when its only payload is the activated object name,
+yielding a single object shape instead of noisy double-delimited NOTA from a
+one-field struct (Spirit `pmg5`).
+
+The assembled schema is canonical NOTA-and-rkyv only, round-tripped through its
+writer and reader. All NOTA output comes from the typed codec — a printed type
+label is a real decodable shape, never a hand-rolled witness or ad hoc field
+join, and a known-root file is its root body encoded through an object/body
+abstraction over ordered fields (Spirit `hc0t`). The assembled-schema visibility
+wrapper is a normal data-carrying variant: `(Public Name Value)` and
+`(Private Name Value)`, with `Public`/`Private` as the variant head followed by
+the name and value fields (Spirit `zg84`).
