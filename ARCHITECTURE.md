@@ -2,6 +2,31 @@
 
 `nota` owns the raw NOTA structural floor.
 
+## Direction
+
+`nota` is the new NOTA implementation for the schema-derived stack — the raw
+NOTA replacement repository, not a branch-only temporary surface. The
+predecessor surface is the existing `nota` / `nota-codec` family; this
+repository carries the replacement track on `main`.
+
+NOTA gives methods on raw delimiter structures — factual delimiter predicates,
+root-object queries, source spans, and structural candidate classification — and
+does not decide schema semantics. The first NOTA pass breaks text into
+delimiter-balanced object blocks and emits a compact first-two-level structure
+header that records delimiter/atom shape and child counts only, so higher
+layers can triage before semantic lowering.
+
+The `@` at-binding declaration sigil is retired. The earlier `Name@{...}`
+struct-like, `Name@[...]` enum-like, and `name@(Reference ...)` member-binding
+forms are removed; `nota` does not parse `@` as a declaration or binding sigil.
+Declaration meaning is carried by position and delimiter shape read through the
+typed macro-node layer, not by an `@` open-delimiter interface. The root schema
+object is implicit from the filename and needs no sigil or outer delimiter.
+
+Macro heads are not sigiled at the raw NOTA layer: a macro name is just a symbol
+candidate until a schema context reads a known schema-node position as a
+tagged or data-carrying macro variant.
+
 ## Planes
 
 - `Document` is an ordered list of root `Block`s parsed from source text.
