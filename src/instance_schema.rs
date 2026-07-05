@@ -12,7 +12,7 @@
 //! The reference kind held at each node is a nota-local [`TypeReference`]
 //! (a type name plus the structural container forms `Vec` / `Optional` / `Map`
 //! / `FixedBytes`). Higher layers project this into their own schema-value
-//! vocabulary (schema-next's `SourceReference`) and render it through the
+//! vocabulary, such as a schema `SourceReference`, and render it through the
 //! schema encoder; this base crate never formats schema text.
 
 use crate::{Block, NotaDecode, NotaDecodeError};

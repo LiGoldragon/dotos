@@ -133,7 +133,7 @@ tagged or data-carrying macro variant.
   but it is not the conceptual home of typed macro nodes. Delimited captures
   expose the matched block's inner `NotaBody`, not the wrapper delimiter, so the
   next semantic parser always receives body contents. The mechanism is
-  semantic-neutral: schema-next may register struct/enum/newtype patterns, but
+  semantic-neutral: schema may register struct/enum/newtype patterns, but
   nota only matches atoms, delimiters, literals, and rest captures. A
   delimited pattern can carry a recursive `Pattern` over that block's children,
   giving consumers arbitrarily nested structural constraints without recursive

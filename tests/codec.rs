@@ -325,10 +325,10 @@ impl KnownRootExample {
 
 #[test]
 fn codec_decodes_known_root_and_parenthesized_object_from_the_same_body_shape() {
-    let document_body = NotaSource::new("schema-next:core\n[alpha beta]\n[Recorded Rejected]")
+    let document_body = NotaSource::new("schema:core\n[alpha beta]\n[Recorded Rejected]")
         .parse_document_body::<KnownRootExample>()
         .expect("document body decodes");
-    let block = NotaSource::new("(schema-next:core [alpha beta] [Recorded Rejected])")
+    let block = NotaSource::new("(schema:core [alpha beta] [Recorded Rejected])")
         .parse_root()
         .expect("parenthesized object parses");
     let object_body = NotaBlock::new(&block)
@@ -341,7 +341,7 @@ fn codec_decodes_known_root_and_parenthesized_object_from_the_same_body_shape() 
 
 #[test]
 fn codec_decodes_and_encodes_known_root_document_body() {
-    let source = r#"schema-next:core
+    let source = r#"schema:core
 [alpha beta]
 [Recorded Rejected]"#;
     let value = KnownRootExample::from_nota_source(source).expect("known root body decodes");
@@ -349,14 +349,14 @@ fn codec_decodes_and_encodes_known_root_document_body() {
     assert_eq!(
         value,
         KnownRootExample {
-            name: "schema-next:core".to_owned(),
+            name: "schema:core".to_owned(),
             imports: vec!["alpha".to_owned(), "beta".to_owned()],
             output_variants: vec!["Recorded".to_owned(), "Rejected".to_owned()],
         }
     );
     assert_eq!(
         value.to_nota(),
-        "schema-next:core\n[alpha beta]\n[Recorded Rejected]"
+        "schema:core\n[alpha beta]\n[Recorded Rejected]"
     );
 }
 

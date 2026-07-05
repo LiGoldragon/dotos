@@ -827,7 +827,7 @@ fn structural_macro_node_pascal_head_body_does_not_shadow_fixed_arity_sibling() 
     assert_eq!(apply.to_structural_nota(), "(Baz X Y Z)");
 }
 
-/// Mirrors schema-next `TypeReference`: a headed atom-leaf variant
+/// Mirrors a schema `TypeReference`: a headed atom-leaf variant
 /// (`FixedBytes`) reads a numeric width directly from the atom text, a
 /// keyword variant (`Bytes`) is the bare-head sibling, and a two-child
 /// `Headed` variant (`Map`) proves the flat map form needs no named payload —
