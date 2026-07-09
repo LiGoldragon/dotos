@@ -373,3 +373,148 @@ abstraction over ordered fields (Spirit `hc0t`). The assembled-schema visibility
 wrapper is a normal data-carrying variant: `(Public Name Value)` and
 `(Private Name Value)`, with `Public`/`Private` as the variant head followed by
 the name and value fields (Spirit `zg84`).
+
+## Schema-vision redesign: dotted text projection
+
+The settled schema/NOTA redesign is recorded in full in the `schema-language`
+repository's `ARCHITECTURE.md` (branch `schema-vision-redesign-arch-docs`). That
+document is the design of record for the whole stack; this section states only
+the slice that binds `nota`, and marks the one nota-layer question that is still
+OPEN.
+
+The redesign restates, and `nota` already embodies, three tenets:
+
+- Strict typed positional data with positionality as the golden rule. There is
+  no named binding, no keyword argument, and no label-in-value anywhere. A name
+  at a use site is only ever a schema-required disambiguator or a
+  reference/path/name value; it never identifies a slot. `nota` already carries
+  this: structures are positional and the codec reads slots by order, never by
+  tag.
+- Capitalization is semantic at the schema-source layer (a capitalized leading
+  atom is an object — type, generic, or variant; a lowercase-leading atom is a
+  name or reference) but is not a raw-decoder input. The fixed slot type decides
+  string-versus-variant, so a bare atom value may be capitalized and a
+  capitalized string needs no delimiter. This matches the existing "qualifies
+  as" promotion: `nota` classifies a token's candidacy and lets the typed layer
+  demote under context.
+- NOTA is the human text projection at one edge; the binary wire and the state
+  at rest are rkyv keyed by field position, and they are untouched by any
+  text-syntax change. Field order stays the compatibility surface. The
+  dotted-everywhere change below is data-safe by construction: it changes only
+  what the text projection looks like, never the rkyv layout or the semantic
+  model.
+
+The redesign's text-projection change is dotted-everywhere: the dot replaces all
+name-adjacency-value forms. Data-carrying variants `(Variant Data)` project as
+`Variant.Data`; inline enum and struct become `Variant.[...]` and
+`Variant.{...}`; generic application is dotted and positional (`Vector.Domain`,
+`Map.(Key Value)`); import path segments join with dots. The change that reaches
+into this crate is that raw NOTA map entries `{ k v }` project as `{ k.v }`. The
+map-entry rule is: split on the first top-level dot; the key is one dotless block
+(atom keys only, no structured keys); the value may itself be dotted, including a
+grouped value such as `{ k.(a b) }`.
+
+### OPEN: how the dot is realized in the raw grammar
+
+The dotted-everywhere *direction* is accepted. What is not decided, and must not
+be treated as decided, is *how* the dot is realized in the raw NOTA grammar and
+codec — whether the dot becomes a real grammar token or stays an atom character
+read by a higher layer. This is a seed-grammar-versus-convention fork reserved
+for the psyche.
+
+Current raw handling (facts, so the fork is grounded, not guessed):
+
+- The raw grammar has no dot construct. `.` is an ordinary atom character.
+  `Parser::parse_atom` (`src/parser.rs:790`) ends an atom only at whitespace, an
+  opening or closing delimiter, a `;;` comment, or a pipe-delimiter close; the
+  dot is not a break character. `AtomCharacter::is_bare_string`
+  (`src/parser.rs:907`) excludes only whitespace and the six bracket characters,
+  so the dot is symbol-safe. The single place the raw layer inspects a dot is
+  decimal classification: `AtomClassification::classify` (`src/parser.rs:583`)
+  tags a token `DecimalCandidate` when it parses as `f64` and contains a dot.
+- The `Block` grammar variants are `Delimited { delimiter, span, root_objects }`,
+  `PipeText`, and `Atom` (`src/parser.rs:56`); the closed delimiter set is
+  parenthesis, square-bracket, brace, pipe-parenthesis, and pipe-brace
+  (`src/parser.rs:249`). None of them is dot-aware.
+- The map codec reads a brace as a flat, even-length block stream and pairs
+  adjacent blocks. `NotaCollection::parse_map` (`src/codec.rs:550`) errors on an
+  odd child count and reads child `i` as key and child `i+1` as value;
+  `NotaEncode for BTreeMap` (`src/codec.rs:924`) emits `{ key value key value }`.
+  There is no dot handling in the codec.
+
+Because the dot is only an atom character today, the dotted map forms tokenize
+asymmetrically (verified by parsing each form through this crate):
+
+- `k.v`, `Variant.Data`, `Vector.Domain`, and `signal-spirit.signal.Entry` each
+  lex as one atom; the whole dotted path is a single token.
+- `{ k.v }` yields a brace holding one atom `k.v` — an odd child count that
+  `parse_map` rejects outright.
+- `{ a.1 b.2 }` yields a brace holding two atoms `a.1` and `b.2`; the current
+  pairwise `parse_map` misreads them as a single entry with key `a.1` and value
+  `b.2` instead of two entries.
+- `{ k.(a b) }` yields a brace holding the atom `k.` (the trailing dot is
+  retained because the opening `(` breaks the atom) followed by the parenthesis
+  `(a b)`; `parse_map` reads key `k.` (dot included) and value `(a b)`.
+
+So atom-valued entries collapse to one token each while group-valued entries
+split into a trailing-dot key plus a group. There is no uniform structural
+reading of a dotted map under the grammar as it stands; the dotted map form is
+not representable in the raw layer today.
+
+Options for realizing `{ k.v }` and `{ k.(a b) }` in raw NOTA:
+
+- Option 1 — dot as a first-class raw grammar token. `parse_object` gains a
+  dot-binding construct: after a leading block (the dotless key), a top-level dot
+  binds the following block as the value, producing a structural pair (a new
+  `Block` shape or a normalized two-child form). Cost: a genuine seed-grammar
+  change — new block shape or normalization, span bookkeeping, encoder support,
+  and a rule that keeps a numeric literal like `3.14` a decimal rather than a
+  binder. Buys: `{ k.v }`, `{ a.1 b.2 }`, and `{ k.(a b) }` all read uniformly,
+  keys never carry a stray trailing dot, and the map, variant, and application
+  readers see structure instead of splitting strings. This is the shape that
+  most fully dissolves the trailing-dot special case into the normal case.
+- Option 2 — dot stays atom-embedded, read by a codec convention (no grammar
+  token). The brace codec stops pairing adjacent blocks and walks entries: a
+  child atom that contains a top-level dot is a complete entry split on the first
+  dot (`a.1` -> key `a`, value `1`); a child atom ending in a dot consumes the
+  following block as its value (`k.` then `(a b)` -> key `k`, value `(a b)`).
+  Cost: this is exactly the per-type string-splitting the "hand-parsing sites are
+  violations to fix" boundary already in this document warns against; the
+  trailing-dot atom `k.` is an artifact the encoder must emit and the decoder
+  must special-case; and a dot-bearing scalar must be disambiguated by expected
+  type (a decimal value versus a key/value split) rather than by shape. It does
+  keep the seed grammar and rkyv untouched.
+- Option 3 — keep the raw grammar dot-free and realize the dot only above the
+  raw parser. The raw brace stays the flat `{ k v }` key/value stream; the dotted
+  projection is a schema-source surface expanded and normalized by the typed
+  structural-node layer before it reaches the raw brace codec, so a raw brace
+  never sees a dotted entry. Buys: raw grammar, codec, and rkyv all untouched and
+  the text/binary split preserved. Cost: the raw `.nota` map surface stays
+  space-separated while only `.schema` source is dotted, which contradicts the
+  redesign's stated intent that `{ k v }` becomes `{ k.v }` at the raw NOTA layer
+  too.
+
+A recurring observation across the options: the dot's meaning is inherently
+type-directed. A top-level dot means "decimal" inside a numeric value, "key/value
+split" at a map position, and "application" at a reference position — and the
+tenet that the expected type is always known at a NOTA boundary is what
+disambiguates them. A type-blind raw tokenizer (Option 1) must therefore carry an
+extra rule to keep `3.14` a decimal, whereas the type-directed layers (Options 2
+and 3) get that disambiguation for free because `parse_map` runs only where a map
+is expected.
+
+Recommendation (advisory; the decision is the psyche's): lean toward Option 2 —
+a type-directed dot split owned by the brace and reference codecs — because it
+honors the stated intent that raw maps become dotted while leaving the seed
+grammar and rkyv layout untouched, and because the decimal overlap shows the dot
+is a type-directed reading rather than a type-blind token. Option 1 is the more
+uniform shape and the one to choose if the psyche accepts a seed-grammar change;
+its price is the decimal-versus-binder rule and touching the recursion floor.
+Option 3 is the least invasive but drops the raw-layer half of dotted-everywhere.
+
+The single question for the psyche: does the dot become a real token in the raw
+NOTA seed grammar (a uniform binder everywhere, at the cost of a seed-grammar
+change and a decimal-versus-binder disambiguation rule), or does it stay an atom
+character with the dotted map, variant, and application forms realized only by
+the type-directed layers above the raw parser (seed grammar and rkyv untouched,
+but the raw `{ }` map surface does not itself tokenize as dotted)?
