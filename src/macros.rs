@@ -43,8 +43,6 @@ pub enum MacroDelimiter {
     Parenthesis,
     SquareBracket,
     Brace,
-    PipeParenthesis,
-    PipeBrace,
 }
 
 impl MacroDelimiter {
@@ -53,8 +51,6 @@ impl MacroDelimiter {
             Delimiter::Parenthesis => Self::Parenthesis,
             Delimiter::SquareBracket => Self::SquareBracket,
             Delimiter::Brace => Self::Brace,
-            Delimiter::PipeParenthesis => Self::PipeParenthesis,
-            Delimiter::PipeBrace => Self::PipeBrace,
         }
     }
 
@@ -70,8 +66,6 @@ impl MacroDelimiter {
             Self::Parenthesis => "parenthesis",
             Self::SquareBracket => "square bracket",
             Self::Brace => "brace",
-            Self::PipeParenthesis => "pipe parenthesis",
-            Self::PipeBrace => "pipe brace",
         }
     }
 }

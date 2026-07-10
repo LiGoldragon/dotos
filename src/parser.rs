@@ -121,26 +121,6 @@ impl Block {
         )
     }
 
-    pub fn is_pipe_parenthesis(&self) -> bool {
-        matches!(
-            self,
-            Self::Delimited {
-                delimiter: Delimiter::PipeParenthesis,
-                ..
-            }
-        )
-    }
-
-    pub fn is_pipe_brace(&self) -> bool {
-        matches!(
-            self,
-            Self::Delimited {
-                delimiter: Delimiter::PipeBrace,
-                ..
-            }
-        )
-    }
-
     pub fn is_pipe_text(&self) -> bool {
         matches!(self, Self::PipeText(_))
     }
@@ -241,14 +221,6 @@ impl Block {
                 delimiter: Delimiter::Brace,
                 ..
             } => StructureShape::Brace,
-            Self::Delimited {
-                delimiter: Delimiter::PipeParenthesis,
-                ..
-            } => StructureShape::PipeParenthesis,
-            Self::Delimited {
-                delimiter: Delimiter::PipeBrace,
-                ..
-            } => StructureShape::PipeBrace,
             Self::PipeText(_) => StructureShape::PipeText,
             Self::Atom(_) => StructureShape::Atom,
         }
@@ -264,8 +236,6 @@ pub enum Delimiter {
     Parenthesis,
     SquareBracket,
     Brace,
-    PipeParenthesis,
-    PipeBrace,
 }
 
 impl Delimiter {
@@ -274,8 +244,6 @@ impl Delimiter {
             Self::Parenthesis => "(",
             Self::SquareBracket => "[",
             Self::Brace => "{",
-            Self::PipeParenthesis => "(|",
-            Self::PipeBrace => "{|",
         }
     }
 
@@ -284,8 +252,6 @@ impl Delimiter {
             Self::Parenthesis => ")",
             Self::SquareBracket => "]",
             Self::Brace => "}",
-            Self::PipeParenthesis => "|)",
-            Self::PipeBrace => "|}",
         }
     }
 
@@ -294,8 +260,6 @@ impl Delimiter {
             Self::Parenthesis => "parenthesis",
             Self::SquareBracket => "square bracket",
             Self::Brace => "brace",
-            Self::PipeParenthesis => "pipe parenthesis",
-            Self::PipeBrace => "pipe brace",
         }
     }
 
@@ -314,8 +278,6 @@ impl Delimiter {
             Self::Parenthesis => ')',
             Self::SquareBracket => ']',
             Self::Brace => '}',
-            Self::PipeParenthesis => ')',
-            Self::PipeBrace => '}',
         }
     }
 
@@ -425,8 +387,6 @@ pub enum StructureShape {
     SquareBracket,
     Brace,
     PipeText,
-    PipeParenthesis,
-    PipeBrace,
     Unknown,
 }
 
@@ -439,8 +399,6 @@ impl StructureShape {
             Self::SquareBracket => "square bracket",
             Self::Brace => "brace",
             Self::PipeText => "pipe text",
-            Self::PipeParenthesis => "pipe parenthesis",
-            Self::PipeBrace => "pipe brace",
             Self::Unknown => "unknown",
         }
     }
@@ -453,8 +411,6 @@ impl StructureShape {
             Self::SquareBracket => 3,
             Self::Brace => 4,
             Self::PipeText => 5,
-            Self::PipeParenthesis => 6,
-            Self::PipeBrace => 7,
             Self::Unknown => 15,
         }
     }
@@ -467,8 +423,6 @@ impl StructureShape {
             3 => Self::SquareBracket,
             4 => Self::Brace,
             5 => Self::PipeText,
-            6 => Self::PipeParenthesis,
-            7 => Self::PipeBrace,
             _ => Self::Unknown,
         }
     }
@@ -707,15 +661,9 @@ impl<'source> Parser<'source> {
 
     fn parse_object(&mut self) -> Result<Block, NotaError> {
         match self.peek() {
-            Some('(') if self.peek_next() == Some('|') => {
-                self.parse_pipe_delimited(Delimiter::PipeParenthesis)
-            }
             Some('(') => self.parse_delimited(Delimiter::Parenthesis),
             Some('[') if self.peek_next() == Some('|') => self.parse_pipe_text(),
             Some('[') => self.parse_delimited(Delimiter::SquareBracket),
-            Some('{') if self.peek_next() == Some('|') => {
-                self.parse_pipe_delimited(Delimiter::PipeBrace)
-            }
             Some('{') => self.parse_delimited(Delimiter::Brace),
             // A misplaced pipe-close (`|]`, `|)`, `|}`) at an object position
             // would make `parse_atom` return a zero-width atom without advancing
@@ -728,39 +676,6 @@ impl<'source> Parser<'source> {
             }),
             Some(_) => Ok(self.parse_atom()),
             None => Ok(self.parse_atom()),
-        }
-    }
-
-    fn parse_pipe_delimited(&mut self, delimiter: Delimiter) -> Result<Block, NotaError> {
-        let start = self.cursor.position();
-        self.bump();
-        self.bump();
-        let mut root_objects = Vec::new();
-        loop {
-            self.skip_spacing();
-            let Some(character) = self.peek() else {
-                return Err(NotaError::UnclosedDelimiter {
-                    delimiter,
-                    position: start,
-                });
-            };
-            if character == '|' && self.peek_next() == Some(delimiter.closing()) {
-                self.bump();
-                self.bump();
-                let end = self.cursor.position();
-                return Ok(Block::Delimited {
-                    delimiter,
-                    span: SourceSpan { start, end },
-                    root_objects,
-                });
-            }
-            if Delimiter::from_closing(character).is_some() {
-                return Err(NotaError::UnexpectedClose {
-                    found: character,
-                    position: self.cursor.position(),
-                });
-            }
-            root_objects.push(self.parse_object()?);
         }
     }
 

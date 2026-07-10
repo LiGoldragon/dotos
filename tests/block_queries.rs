@@ -39,8 +39,8 @@ fn exposes_delimiter_text_and_child_helpers() {
     assert_eq!(Delimiter::SquareBracket.opening_text(), "[");
     assert_eq!(Delimiter::SquareBracket.closing_text(), "]");
     assert_eq!(
-        Delimiter::PipeParenthesis.wrap(["Kind".to_owned(), "(Decision)".to_owned()]),
-        "(|Kind (Decision)|)"
+        Delimiter::Parenthesis.wrap(["Kind".to_owned(), "(Decision)".to_owned()]),
+        "(Kind (Decision))"
     );
     assert!(root.is_delimited_with(Delimiter::SquareBracket));
     assert_eq!(
@@ -104,66 +104,6 @@ fn double_semicolon_is_comment_and_single_semicolon_is_atom_text() {
     assert_eq!(roots.len(), 2);
     assert_eq!(roots[0].demote_to_string(), Some("alpha;beta"));
     assert_eq!(roots[1].demote_to_string(), Some("gamma"));
-}
-
-#[test]
-fn pipe_parenthesis_and_pipe_brace_are_recursive_delimiters() {
-    let source = "(| Kind (Decision [Reason]) |) {| Entry [Topic [Tag]] |}";
-    let document = Document::parse(source).expect("valid nota");
-    let roots = document.root_objects();
-
-    assert_eq!(roots.len(), 2);
-    assert!(roots[0].is_pipe_parenthesis());
-    assert!(roots[1].is_pipe_brace());
-    assert_eq!(roots[0].holds_root_objects(), 2);
-    assert_eq!(roots[1].holds_root_objects(), 2);
-    assert!(
-        roots[0]
-            .root_object_at(1)
-            .is_some_and(|block| block.is_parenthesis()),
-        "pipe parenthesis is recursive, not raw pipe text"
-    );
-    assert!(
-        roots[1]
-            .root_object_at(1)
-            .and_then(|block| block.root_object_at(1))
-            .is_some_and(|block| block.is_square_bracket()),
-        "pipe brace keeps nested native collection objects visible to schema"
-    );
-    assert_eq!(
-        roots[0].reemit(document.source()),
-        "(| Kind (Decision [Reason]) |)"
-    );
-    assert_eq!(
-        roots[1].reemit(document.source()),
-        "{| Entry [Topic [Tag]] |}"
-    );
-}
-
-#[test]
-fn pipe_brace_can_nest_pipe_brace_declarations() {
-    let source =
-        "{| Entry receipt {| Receipt recordIdentifier RecordIdentifier |} later Receipt |}";
-    let document = Document::parse(source).expect("valid nota");
-    let root = document.root_object_at(0).expect("root");
-
-    assert!(root.is_pipe_brace());
-    assert!(
-        root.root_object_at(2)
-            .is_some_and(|block| block.is_pipe_brace())
-    );
-    assert_eq!(root.reemit(document.source()), source);
-
-    let compact_source =
-        "{|Entry receipt {|Receipt recordIdentifier RecordIdentifier|} later Receipt|}";
-    let compact_document = Document::parse(compact_source).expect("compact valid nota");
-    let compact_root = compact_document.root_object_at(0).expect("compact root");
-    assert!(compact_root.is_pipe_brace());
-    assert!(
-        compact_root
-            .root_object_at(2)
-            .is_some_and(|block| block.is_pipe_brace())
-    );
 }
 
 #[test]

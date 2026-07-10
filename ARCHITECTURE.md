@@ -76,15 +76,15 @@ tagged or data-carrying macro variant.
 
 - `Document` is an ordered list of root `Block`s parsed from source text.
 - `Block` is either a delimited object, a pipe-text object, or an atom.
-  Delimited objects include standard parentheses, square brackets, braces, and
-  the recursive structural pipe forms `(|...|)` and `{|...|}`. Those two
-  structural pipe forms are RETIRED BY DECISION from the target grammar (see
-  "Structural pipe forms are retired"): the current seed parser still produces
-  them, and their removal is pending implementation, so this bullet describes
-  current shape, not target shape. Pipe-square `[|...|]` remains text, not
-  recursive structure. Pipe-square text uses backslash escapes for literal close
-  markers and backslashes (`\|]`, `\\`), so the delimiter shape remains bounded
-  and readable while `NotaString` stays lossless.
+  Delimited objects are the three base pairs: standard parentheses, square
+  brackets, and braces. The structural pipe forms `(|...|)` and `{|...|}` are
+  REMOVED from the grammar and parser (see "Structural pipe forms are removed"):
+  `(|` and `{|` no longer open a delimited block, so that text parses as whatever
+  the base grammar yields or is rejected at source, the way the retired `@` sigil
+  is rejected. Pipe-square `[|...|]` remains text, not recursive structure.
+  Pipe-square text uses backslash escapes for literal close markers and
+  backslashes (`\|]`, `\\`), so the delimiter shape remains bounded and readable
+  while `NotaString` stays lossless.
 - `Delimiter` owns the textual delimiter table: opening text, closing text,
   and wrapping child encodings. `Block` exposes delimiter-specific child
   queries so consumers do not destructure raw enum variants to recover a child
@@ -252,12 +252,11 @@ enum tries its ordered structural variants, and the enum decides what the
 captures mean and how the chosen variant is written back to source. NOTA does
 not discover macro meaning through a global parser.
 
-The current schema layer assigns declaration meaning to pipe-parenthesis and
-pipe-brace, but `nota` only reports those delimiter shapes and their children;
-both structural pipe forms are retired by decision from the target grammar (see
-"Structural pipe forms are retired"), so this reporting path is current shape
-pending their removal. `nota` does not promote macro heads, validate symbol
-case, or decide
+Both structural pipe forms are removed from the grammar and parser (see
+"Structural pipe forms are removed"), and the schema layer no longer assigns
+declaration meaning to pipe-parenthesis or pipe-brace; `nota` no longer reports
+those delimiter shapes at all. `nota` does not promote macro heads, validate
+symbol case, or decide
 whether a parenthesized object is a variant, a macro call, or ordinary data. It
 classifies no atom content into a meaning: it reads a dotted prefix only where
 the expected type makes one possible, the raw period stays an ordinary atom
@@ -305,38 +304,39 @@ match time, not the wrapper (Spirit `ydpa`). Because each macro's pattern record
 where line breaks, indentation, and spacing belong, a NOTA formatter can be
 derived from the macro definitions themselves (Spirit `5p9s`).
 
-## Structural pipe forms are retired
+## Structural pipe forms are removed
 
-The current closed delimiter set is the three base pairs — parenthesis,
-square-bracket, brace — plus three piped variants — pipe-text, pipe-parenthesis,
-pipe-brace (Spirit `j9du`). Pipe-text is the bracket-safe / multiline string;
-the other two the current seed parser reports as `PipeParenthesis` / `PipeBrace`
-delimited blocks without interpreting them.
+The closed delimiter set is the three base pairs — parenthesis, square-bracket,
+brace — plus pipe-text, the sole surviving piped variant (Spirit `j9du`).
+Pipe-text is the bracket-safe / multiline string. The two structural piped
+variants that the earlier seed parser reported as `PipeParenthesis` /
+`PipeBrace` delimited blocks are gone from the grammar, the parser, and the
+codec.
 
 The two STRUCTURAL pipe delimiter forms — pipe-parenthesis `(| … |)` and
-pipe-brace `{| … |}` — are RETIRED BY DECISION from the target grammar. They
-existed only to mark a different object class inside a mixed block: the schema
-layer read pipe-parenthesis as the generic-declaration construct (Spirit `hh3z`)
-and pipe-brace as the trait/impl construct (Spirit `bpyu`), each a way to fence
-off one object class living among others in a shared block. The
-schema-language per-kind declaration block principle — every object class gets
-its own dedicated block — removes their reason to exist: once generics and
-impls each have their own block, there is no mixed block left for a pipe fence to
-partition. The psyche has settled that these forms leave the language.
+pipe-brace `{| … |}` — are REMOVED. They existed only to mark a different object
+class inside a mixed block: the schema layer read pipe-parenthesis as the
+generic-declaration construct (Spirit `hh3z`) and pipe-brace as the trait/impl
+construct (Spirit `bpyu`), each a way to fence off one object class living among
+others in a shared block. The schema-language per-kind declaration block
+principle — every object class gets its own dedicated block — removed their
+reason to exist: once generics and impls each have their own block, there is no
+mixed block left for a pipe fence to partition. The psyche settled that these
+forms leave the language, and they have.
 
-Current-versus-target framing is honest here: the current seed parser still
-produces `PipeParenthesis` / `PipeBrace` blocks and the current schema layer
-still reads them, and their removal from grammar and parser is pending
-implementation. Once removed, the target closed delimiter set is the three base
-pairs plus pipe-text only, and the parser rejects `(| … |)` and `{| … |}` at
-source the way it now rejects the retired `@` sigil.
+The removal has landed: the parser no longer produces `PipeParenthesis` /
+`PipeBrace` blocks, the last consumer (schema-language) stopped reading them
+before removal, and the closed delimiter set is now the three base pairs plus
+pipe-text only. `(|` and `{|` no longer open a delimited block, so that text
+parses as whatever the base grammar yields or is rejected at source the way the
+retired `@` sigil is rejected.
 
-Pipe-text is KEPT as target. It is the sole surviving piped form, retained for
-the quotation-safety principle below.
+Pipe-text is KEPT. It is the sole surviving piped form, retained for the
+quotation-safety principle below.
 
 The earlier open derive work — `#[shape(…)]` additions that would recognize the
-structural pipe delimiters and their optional-ends matching — is dropped rather
-than pursued, because the constructs it would have matched are retired. The
+structural pipe delimiters and their optional-ends matching — was dropped rather
+than pursued, because the constructs it would have matched are gone. The
 substrate stays meaning-free, and the constructs those pipe forms once carried
 move to their own per-kind blocks in the schema layer instead of being fenced
 inside a mixed block by delimiter shape.

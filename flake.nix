@@ -33,7 +33,6 @@
           design-examples = pkgs.runCommand "nota-design-examples" { } ''
             grep -R "design_example_source_spans_propagate_through_nested_blocks" ${src}/tests/design_examples.rs >/dev/null
             grep -R "design_example_reader_exposes_candidates_not_schema_semantics" ${src}/tests/design_examples.rs >/dev/null
-            grep -R "design_example_pipe_delimiters_are_recursive_blocks" ${src}/tests/design_examples.rs >/dev/null
             grep -R "design_example_structure_header_captures_first_two_levels" ${src}/tests/design_examples.rs >/dev/null
             grep -R "design_example_structure_header_marks_child_count_overflow" ${src}/tests/design_examples.rs >/dev/null
             grep -R "design_example_structure_header_marks_slot_truncation" ${src}/tests/design_examples.rs >/dev/null

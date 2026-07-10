@@ -91,42 +91,6 @@ fn design_example_reader_exposes_candidates_not_schema_semantics() {
     assert_eq!(block.demote_to_string(), Some("Decision"));
 }
 
-/// Illustrates: pipe-parenthesis and pipe-brace are recursive
-/// delimiter forms. They are NOT string escapes. The reader exposes
-/// them as normal nested blocks with distinct structural shapes, so a
-/// schema layer can assign low-level declaration meaning to `(| ... |)`
-/// and `{| ... |}` without losing access to inner objects.
-#[test]
-fn design_example_pipe_delimiters_are_recursive_blocks() {
-    let source = "(| Kind (Decision Correction) |) {| Entry [Topic Kind] |}";
-    let document = Document::parse(source).expect("nota parses");
-    let enum_declaration = document.root_object_at(0).expect("pipe parenthesis");
-    let struct_declaration = document.root_object_at(1).expect("pipe brace");
-
-    assert!(enum_declaration.is_pipe_parenthesis());
-    assert!(struct_declaration.is_pipe_brace());
-    assert_eq!(
-        enum_declaration.structure_shape(),
-        StructureShape::PipeParenthesis
-    );
-    assert_eq!(
-        struct_declaration.structure_shape(),
-        StructureShape::PipeBrace
-    );
-    assert!(
-        enum_declaration
-            .root_object_at(1)
-            .is_some_and(|block| block.is_parenthesis()),
-        "the enum payload remains parsed as structure"
-    );
-    assert!(
-        struct_declaration
-            .root_object_at(1)
-            .is_some_and(|block| block.is_square_bracket()),
-        "the struct payload remains parsed as structure"
-    );
-}
-
 /// Illustrates: the first parser pass already has enough information
 /// to emit a compact first-two-level structure header. Slot 0 is the
 /// document; the remaining slots are root blocks and their immediate
