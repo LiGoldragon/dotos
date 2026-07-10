@@ -10,11 +10,20 @@ predecessor surface is the existing `nota` / `nota-codec` family; this
 repository carries the replacement track on `main`.
 
 NOTA gives methods on raw delimiter structures — factual delimiter predicates,
-root-object queries, source spans, and structural candidate classification — and
-does not decide schema semantics. The first NOTA pass breaks text into
-delimiter-balanced object blocks and emits a compact first-two-level structure
-header that records delimiter/atom shape and child counts only, so higher
-layers can triage before semantic lowering.
+root-object queries, source spans, and on-demand structural candidate
+predicates — and does not decide schema semantics. The raw layer discovers
+structure only — delimiter boundaries, atom extents, pipe forms, and comments —
+and that is syntax; it never classifies atom content into a meaning. Atom
+meaning — decimal versus string versus variant versus reference — is not a fact
+the parser records but a reading decided entirely by the expected type at the
+position. Because NOTA is strictly typed and positional, the expected type is
+already known at every position, so a parser that determines what the type
+already fixes is a design error. The raw pass therefore records no content
+classification, and the earlier content-driven decimal reading — a scan that
+guessed a number from the presence of a period — is removed as off-vision. The
+first NOTA pass breaks text into delimiter-balanced object blocks and emits a
+compact first-two-level structure header that records delimiter/atom shape and
+child counts only, so higher layers can triage before semantic lowering.
 
 NOTA is a typed text surface: a hack on the text user interface built from
 delimiters, beauty, and typed structure where everything is read as a known type
@@ -39,10 +48,14 @@ bare-atom punctuation set is broad. A comment requires a double-semicolon marker
 Classification is "qualifies as", not "is": a token qualifies as a symbol when it
 is symbol-safe (PascalCase, camelCase, identifier alphabet), and whether it
 actually is a symbol is a type-level question the macro and schema layers decide.
-At parse time NOTA promotes to the higher classification — qualified-symbol over
-string — because demoting later under type context is easy while promoting is
-hard; the schema layer demotes to string-only where its types require it (Spirit
-`fvtf`).
+Symbol qualification is an on-demand structural-candidate predicate, not a meaning
+stamped onto the atom while parsing: the reader answers "qualifies as a symbol"
+only when a consumer asks under an expected type, and numeric meaning in
+particular is never inferred by scanning content — an atom becomes an integer,
+decimal, or string exclusively at decode under the expected type. The reading
+default still prefers the higher qualification — qualified-symbol over string —
+because narrowing later under type context is easy while widening is hard; the
+schema layer demotes to string-only where its types require it (Spirit `fvtf`).
 
 The `@` at-binding declaration sigil is retired. The earlier `Name@{...}`
 struct-like, `Name@[...]` enum-like, and `name@(Reference ...)` member-binding
@@ -178,8 +191,22 @@ mode constantly as it advances, always knowing what it can possibly expect next.
 A dotted prefix is conditionally expected under this mechanism — expected in some
 modes and impossible in others.
 
+Dot-splitting is one instance of a broader principle that governs the whole
+reader: the parser never classifies content. The raw layer legitimately
+discovers structure — where delimiters open and close, how far an atom extends,
+which spans are pipe forms, and where comments sit — and structure is the only
+thing syntax can tell it. What an atom means is a separate question with a single
+answer: the expected type at the position. Since that type is always known, the
+reader never needs, and must never attempt, to guess meaning by looking at an
+atom's characters. Deciding whether a period splits a prefix is exactly such a
+meaning question, so it is answered by the expectation mode and never by the
+character being present. The removed decimal classification was the same category
+of error in a different place — a content scan standing in for a decision the
+type already owned — and it is gone for the same reason.
+
 CONSTRAINT (invariant): dot-splitting is decided purely by expectation mode,
-never by scanning content.
+never by scanning content. This is the local form of the general rule that the
+parser classifies no content anywhere.
 
 - When the expected position can carry a dotted prefix, the reader looks for a
   top-level dot in the leading atom and splits the prefix from the remainder.
@@ -220,8 +247,10 @@ The schema layer assigns declaration meaning to pipe-parenthesis and
 pipe-brace, but `nota` only reports those delimiter shapes and their
 children. It does not promote macro heads, validate symbol case, or decide
 whether a parenthesized object is a variant, a macro call, or ordinary data. It
-reads a dotted prefix only where the expected type makes one possible; the raw
-period stays an ordinary atom character everywhere else.
+classifies no atom content into a meaning: it reads a dotted prefix only where
+the expected type makes one possible, the raw period stays an ordinary atom
+character everywhere else, and no atom is read as a number, string, or variant
+until the expected type at decode says so.
 
 Macros themselves are data, the macro most of all: a macro is a serializable
 data object with a name, position, pattern, and template, where pattern and

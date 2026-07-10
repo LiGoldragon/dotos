@@ -241,13 +241,13 @@ fn codec_rejects_noncanonical_byte_sequence_hex() {
 
 #[test]
 fn codec_decodes_and_encodes_ordered_map_values() {
-    let map = NotaSource::new("{alpha 1 beta 2}")
+    let map = NotaSource::new("{alpha.1 beta.2}")
         .parse::<BTreeMap<String, u64>>()
         .expect("map decodes");
 
     assert_eq!(map.get("alpha"), Some(&1));
     assert_eq!(map.get("beta"), Some(&2));
-    assert_eq!(map.to_nota(), "{alpha 1 beta 2}");
+    assert_eq!(map.to_nota(), "{alpha.1 beta.2}");
 }
 
 #[test]

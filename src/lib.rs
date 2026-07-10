@@ -9,6 +9,7 @@
 extern crate self as nota;
 
 mod codec;
+mod expectation;
 mod instance_schema;
 mod macros;
 mod parser;
@@ -20,6 +21,7 @@ pub use codec::{
     NotaNamedBodyFieldDecode, NotaNamedBodyFieldEncode, NotaNamedDocumentFieldDecode,
     NotaNamedDocumentFieldEncode, NotaSource, NotaString,
 };
+pub use expectation::{DottedEntry, DottedExpectation};
 pub use instance_schema::{
     DecodedWithSchema, InstanceSchema, InstanceSchemaBody, NotaDecodeTraced, TypeReference,
 };
@@ -32,6 +34,6 @@ pub use macros::{
 };
 pub use nota_derive::{NotaDecode, NotaDecodeTraced, NotaEncode, StructuralMacroNode};
 pub use parser::{
-    Atom, AtomClassification, Block, Delimiter, Document, NotaError, PipeText, SourcePosition,
-    SourceSpan, StructureHeader, StructureShape, StructureSlot,
+    Atom, Block, Delimiter, Document, NotaError, PipeText, SourcePosition, SourceSpan,
+    StructureHeader, StructureShape, StructureSlot,
 };

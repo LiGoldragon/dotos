@@ -136,7 +136,7 @@ fn derive_rejects_multi_field_enum_payloads_with_wrong_tuple_size() {
 
 #[test]
 fn derive_uses_shared_collection_codec() {
-    let source = NotaSource::new("({alpha (alpha first 1) beta (beta second 2)})");
+    let source = NotaSource::new("({alpha.(alpha first 1) beta.(beta second 2)})");
     let entries = source
         .parse::<TopicMap>()
         .expect("map-backed record decodes");
@@ -144,7 +144,7 @@ fn derive_uses_shared_collection_codec() {
     assert_eq!(entries.entries.len(), 2);
     assert_eq!(
         entries.to_nota(),
-        "({alpha (alpha first 1) beta (beta second 2)})"
+        "({alpha.(alpha first 1) beta.(beta second 2)})"
     );
 }
 

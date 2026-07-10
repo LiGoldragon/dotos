@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::{Block, Delimiter, Document, parser::AtomCharacter};
+use crate::{Block, Delimiter, Document, expectation::DottedExpectation, parser::AtomCharacter};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NotaDecodeError {
@@ -36,6 +36,16 @@ pub enum NotaDecodeError {
         type_name: &'static str,
         value: String,
         reason: String,
+    },
+    ExpectedDottedEntry {
+        expectation: &'static str,
+    },
+    DottedEntryCaseMismatch {
+        expectation: &'static str,
+        prefix: String,
+    },
+    DottedEntryMissingValue {
+        expectation: &'static str,
     },
 }
 
@@ -79,6 +89,21 @@ impl fmt::Display for NotaDecodeError {
                 value,
                 reason,
             } => write!(formatter, "invalid {type_name} {value:?}: {reason}"),
+            Self::ExpectedDottedEntry { expectation } => write!(
+                formatter,
+                "expected a {expectation} entry written as key.value"
+            ),
+            Self::DottedEntryCaseMismatch {
+                expectation,
+                prefix,
+            } => write!(
+                formatter,
+                "{expectation} head {prefix:?} has the wrong case for this position"
+            ),
+            Self::DottedEntryMissingValue { expectation } => write!(
+                formatter,
+                "{expectation} entry ends at the period with no following value"
+            ),
         }
     }
 }
@@ -563,20 +588,14 @@ impl<'block> NotaCollection<'block> {
                 delimiter: Delimiter::Brace.description(),
             },
         )?;
-        if root_objects.len() % 2 != 0 {
-            return Err(NotaDecodeError::ExpectedRootCount {
-                type_name: "BTreeMap",
-                expected: root_objects.len() + 1,
-                found: root_objects.len(),
-            });
-        }
         let mut map = BTreeMap::new();
         let mut index = 0;
         while index < root_objects.len() {
-            let key = parse_key(&root_objects[index])?;
-            let value = parse_value(&root_objects[index + 1])?;
+            let entry = DottedExpectation::Uncapitalized.read_entry(&root_objects[index..])?;
+            let key = parse_key(entry.key())?;
+            let value = parse_value(entry.value())?;
             map.insert(key, value);
-            index += 2;
+            index += entry.consumed();
         }
         Ok(map)
     }
@@ -927,12 +946,11 @@ where
     Value: NotaEncode,
 {
     fn to_nota(&self) -> String {
-        let mut parts: Vec<String> = Vec::new();
+        let mut entries: Vec<String> = Vec::new();
         for (key, value) in self {
-            parts.push(Key::to_nota(key));
-            parts.push(Value::to_nota(value));
+            entries.push(format!("{}.{}", Key::to_nota(key), Value::to_nota(value)));
         }
-        Delimiter::Brace.wrap(parts)
+        Delimiter::Brace.wrap(entries)
     }
 }
 

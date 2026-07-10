@@ -7,6 +7,19 @@ pub struct SourcePosition {
     pub column: usize,
 }
 
+impl SourcePosition {
+    /// Advance this position through the given single-line atom text. Atoms
+    /// never contain newlines, so the line is unchanged and the column moves
+    /// by the character count while the byte offset moves by the byte length.
+    fn advance_through(self, text: &str) -> Self {
+        Self {
+            byte_offset: self.byte_offset + text.len(),
+            line: self.line,
+            column: self.column + text.chars().count(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SourceSpan {
     pub start: SourcePosition,
@@ -522,25 +535,57 @@ pub struct PipeText {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Atom {
     text: String,
-    classification: AtomClassification,
     span: SourceSpan,
 }
 
 impl Atom {
-    pub fn text(&self) -> &str {
-        &self.text
+    pub(crate) fn new(text: String, span: SourceSpan) -> Self {
+        Self { text, span }
     }
 
-    pub fn classification(&self) -> AtomClassification {
-        self.classification
+    pub fn text(&self) -> &str {
+        &self.text
     }
 
     pub fn source_span(&self) -> SourceSpan {
         self.span
     }
 
+    /// Split this atom at its first period into a prefix atom and, when text
+    /// follows the period within the same atom, a remainder atom. `None` when
+    /// the atom carries no period. A period is ordinary atom text; only a
+    /// consumer that expects a dotted prefix at this position calls this, so
+    /// the split is expectation-driven rather than a content classification.
+    pub fn split_at_first_dot(&self) -> Option<(Atom, Option<Atom>)> {
+        let dot = self.text.find('.')?;
+        let prefix = Atom::new(
+            self.text[..dot].to_owned(),
+            SourceSpan {
+                start: self.span.start,
+                end: self.span.start.advance_through(&self.text[..dot]),
+            },
+        );
+        let remainder_text = &self.text[dot + 1..];
+        let remainder = if remainder_text.is_empty() {
+            None
+        } else {
+            Some(Atom::new(
+                remainder_text.to_owned(),
+                SourceSpan {
+                    start: self.span.start.advance_through(&self.text[..dot + 1]),
+                    end: self.span.end,
+                },
+            ))
+        };
+        Some((prefix, remainder))
+    }
+
     pub fn qualifies_as_symbol(&self) -> bool {
-        self.classification == AtomClassification::SymbolCandidate
+        !self.text.is_empty()
+            && self
+                .text
+                .chars()
+                .all(|character| AtomCharacter::new(character).is_symbol())
     }
 
     pub fn qualifies_as_pascal_case_symbol(&self) -> bool {
@@ -565,31 +610,6 @@ impl Atom {
 
     pub fn qualifies_as_kebab_case_symbol(&self) -> bool {
         self.qualifies_as_symbol() && self.text.contains('-')
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AtomClassification {
-    SymbolCandidate,
-    IntegerCandidate,
-    DecimalCandidate,
-    TextCandidate,
-}
-
-impl AtomClassification {
-    pub fn classify(text: &str) -> Self {
-        if text.parse::<i64>().is_ok() {
-            Self::IntegerCandidate
-        } else if text.parse::<f64>().is_ok() && text.contains('.') {
-            Self::DecimalCandidate
-        } else if text
-            .chars()
-            .all(|character| AtomCharacter::new(character).is_symbol())
-        {
-            Self::SymbolCandidate
-        } else {
-            Self::TextCandidate
-        }
     }
 }
 
@@ -802,12 +822,7 @@ impl<'source> Parser<'source> {
         }
         let end = self.cursor.position();
         let text = self.source[start.byte_offset..end.byte_offset].to_owned();
-        let classification = AtomClassification::classify(&text);
-        Block::Atom(Atom {
-            text,
-            classification,
-            span: SourceSpan { start, end },
-        })
+        Block::Atom(Atom::new(text, SourceSpan { start, end }))
     }
 
     fn at_pipe_delimiter_close(&self) -> bool {

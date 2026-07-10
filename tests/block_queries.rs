@@ -1,4 +1,4 @@
-use nota::{AtomClassification, Delimiter, Document, NotaError};
+use nota::{Delimiter, Document, NotaError};
 
 #[test]
 fn parses_ordered_root_objects_and_reemits_from_spans() {
@@ -53,41 +53,44 @@ fn exposes_delimiter_text_and_child_helpers() {
 }
 
 #[test]
-fn classifies_atoms_as_candidates_without_schema_semantics() {
+fn exposes_structural_candidates_without_content_classification() {
     let document = Document::parse(
         "TypeName field-name camelName schema:module:Type CustomMacro RecordPayload 42 7.5 name@host required* a&b score^2 100% x>y x<y path/to a;b",
     )
     .expect("valid nota");
     let roots = document.root_objects();
 
+    // Case-shaped structural candidate predicates are answered on demand from
+    // the atom's characters; they do not stamp a meaning onto the atom.
     assert!(roots[0].qualifies_as_pascal_case_symbol());
     assert!(roots[1].qualifies_as_kebab_case_symbol());
     assert!(roots[2].qualifies_as_camel_case_symbol());
     assert!(roots[3].qualifies_as_symbol());
     assert!(roots[4].qualifies_as_symbol());
     assert_eq!(
-        roots[4].atom().expect("atom").classification(),
-        AtomClassification::SymbolCandidate,
+        roots[4].demote_to_string(),
+        Some("CustomMacro"),
         "macro names are plain symbols; schema context decides whether a symbol invokes a macro"
     );
-    assert_eq!(roots[4].demote_to_string(), Some("CustomMacro"));
     assert!(
         roots[5].qualifies_as_pascal_case_symbol(),
         "payload names are still plain PascalCase symbol candidates"
     );
-    assert_eq!(
-        roots[6].atom().expect("atom").classification(),
-        AtomClassification::IntegerCandidate
-    );
-    assert_eq!(
-        roots[7].atom().expect("atom").classification(),
-        AtomClassification::DecimalCandidate
-    );
+
+    // `42` and `7.5` are not read as numbers here: the parser records no
+    // content classification, so they are ordinary symbol-safe atoms whose
+    // numeric meaning is decided only at decode under an expected type. The
+    // period in `7.5` is ordinary atom text and never splits the atom.
+    assert!(roots[6].qualifies_as_symbol());
+    assert_eq!(roots[6].demote_to_string(), Some("42"));
+    assert!(!roots[6].qualifies_as_pascal_case_symbol());
+    assert!(!roots[6].qualifies_as_camel_case_symbol());
+    assert!(!roots[6].qualifies_as_kebab_case_symbol());
+    assert!(roots[7].qualifies_as_symbol());
+    assert_eq!(roots[7].demote_to_string(), Some("7.5"));
+
     for root in &roots[8..] {
-        assert_eq!(
-            root.atom().expect("atom").classification(),
-            AtomClassification::SymbolCandidate
-        );
+        assert!(root.qualifies_as_symbol());
     }
 }
 
