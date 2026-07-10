@@ -226,6 +226,11 @@ There are exactly two dotted-prefix expectation kinds:
 The mechanism is implemented once in the NOTA reader and exported as a reusable
 mechanism. Downstream consumers — schema-language above all — reuse the exported
 dotted-prefix reader rather than hand-rolling their own dotted-prefix reading.
+The one mechanism offers two entry forms over the single shared split rule and
+head-case check — a block-level reader for a parsed block sequence and a
+string-level reader for a consumer holding an already-extracted atom's text —
+so a caller with a raw string routes through the same expectation-driven
+mechanism instead of re-deriving a local split.
 
 ## Boundary
 

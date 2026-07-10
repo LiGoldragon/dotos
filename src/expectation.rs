@@ -9,7 +9,7 @@
 //! hand-rolling their own dotted-prefix reading.
 
 use crate::codec::NotaDecodeError;
-use crate::parser::Block;
+use crate::parser::{Atom, Block};
 
 /// The two positions at which a reader may split a dotted prefix off a leading
 /// atom. The split algorithm — divide the leading atom at its first top-level
@@ -89,6 +89,36 @@ impl DottedExpectation {
                 })
             }
         }
+    }
+
+    /// Read one dotted entry from a single already-extracted string under this
+    /// expectation. This is the string-level entry form of the same mechanism
+    /// as [`read_entry`](Self::read_entry): the same split-at-first-top-level-dot
+    /// rule (shared through `Atom::split_text_at_first_dot`), the same
+    /// per-kind head-case enforcement, and the same typed errors, returning the
+    /// key and value as string slices. It serves a consumer that already holds
+    /// an atom's text — macro-expanded schema-language payloads above all —
+    /// rather than a block sequence, so it routes through the shared mechanism
+    /// instead of re-deriving a local `split_once`. The whole value is carried
+    /// inline after the period, since a lone string has no following block to
+    /// supply it; a string that ends at the period is a missing value. Meaning
+    /// is still expectation-driven: the caller declares the kind and nothing
+    /// scans the text to decide it.
+    pub fn read_string_entry(self, text: &str) -> Result<(&str, &str), NotaDecodeError> {
+        let (prefix, remainder) =
+            Atom::split_text_at_first_dot(text).ok_or(NotaDecodeError::ExpectedDottedEntry {
+                expectation: self.description(),
+            })?;
+        if !self.accepts_head(prefix) {
+            return Err(NotaDecodeError::DottedEntryCaseMismatch {
+                expectation: self.description(),
+                prefix: prefix.to_owned(),
+            });
+        }
+        let value = remainder.ok_or(NotaDecodeError::DottedEntryMissingValue {
+            expectation: self.description(),
+        })?;
+        Ok((prefix, value))
     }
 }
 

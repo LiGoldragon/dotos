@@ -551,32 +551,50 @@ impl Atom {
         self.span
     }
 
-    /// Split this atom at its first period into a prefix atom and, when text
-    /// follows the period within the same atom, a remainder atom. `None` when
-    /// the atom carries no period. A period is ordinary atom text; only a
-    /// consumer that expects a dotted prefix at this position calls this, so
-    /// the split is expectation-driven rather than a content classification.
-    pub fn split_at_first_dot(&self) -> Option<(Atom, Option<Atom>)> {
-        let dot = self.text.find('.')?;
-        let prefix = Atom::new(
-            self.text[..dot].to_owned(),
-            SourceSpan {
-                start: self.span.start,
-                end: self.span.start.advance_through(&self.text[..dot]),
-            },
-        );
-        let remainder_text = &self.text[dot + 1..];
-        let remainder = if remainder_text.is_empty() {
+    /// Split `text` at its first period into a prefix slice and, when text
+    /// follows the period, a remainder slice. `None` when `text` carries no
+    /// period. This is the single source of the dotted split rule: both the
+    /// atom-level [`split_at_first_dot`](Self::split_at_first_dot) and the
+    /// string-level dotted reader consult it, so the block-level and
+    /// string-level paths never duplicate the splitting logic. A period is
+    /// ordinary text; only a consumer that expects a dotted prefix at this
+    /// position calls this, so the split is expectation-driven rather than a
+    /// content classification.
+    pub(crate) fn split_text_at_first_dot(text: &str) -> Option<(&str, Option<&str>)> {
+        let dot = text.find('.')?;
+        let prefix = &text[..dot];
+        let remainder = &text[dot + 1..];
+        let remainder = if remainder.is_empty() {
             None
         } else {
-            Some(Atom::new(
+            Some(remainder)
+        };
+        Some((prefix, remainder))
+    }
+
+    /// Split this atom at its first period into a prefix atom and, when text
+    /// follows the period within the same atom, a remainder atom. `None` when
+    /// the atom carries no period. Spans are attached to the slices produced by
+    /// the shared `split_text_at_first_dot` rule.
+    pub fn split_at_first_dot(&self) -> Option<(Atom, Option<Atom>)> {
+        let (prefix_text, remainder_text) = Atom::split_text_at_first_dot(&self.text)?;
+        let dot = prefix_text.len();
+        let prefix = Atom::new(
+            prefix_text.to_owned(),
+            SourceSpan {
+                start: self.span.start,
+                end: self.span.start.advance_through(prefix_text),
+            },
+        );
+        let remainder = remainder_text.map(|remainder_text| {
+            Atom::new(
                 remainder_text.to_owned(),
                 SourceSpan {
                     start: self.span.start.advance_through(&self.text[..dot + 1]),
                     end: self.span.end,
                 },
-            ))
-        };
+            )
+        });
         Some((prefix, remainder))
     }
 

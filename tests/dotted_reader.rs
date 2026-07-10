@@ -78,3 +78,113 @@ fn map_value_may_itself_be_dotted_and_round_trips_exactly() {
     assert_eq!(map.get("path"), Some(&String::from("a.b.c")));
     assert_eq!(map.to_nota(), "{path.a.b.c}");
 }
+
+/// The block-level reader over an inline-value atom and the string-level reader
+/// over that same atom text must agree on key and value for every expectation
+/// kind. This is the split parity witness: one mechanism, two entry forms.
+#[test]
+fn string_level_split_matches_the_block_level_reader() {
+    for (expectation, text) in [
+        (DottedExpectation::Uncapitalized, "alpha.1"),
+        (DottedExpectation::Capitalized, "Vector.X"),
+        (DottedExpectation::Uncapitalized, "path.a.b.c"),
+    ] {
+        let document = Document::parse(text).expect("valid nota");
+        let block_entry = expectation
+            .read_entry(document.root_objects())
+            .expect("block-level dotted entry reads");
+        let (string_key, string_value) = expectation
+            .read_string_entry(text)
+            .expect("string-level dotted entry reads");
+
+        assert_eq!(block_entry.key().demote_to_string(), Some(string_key));
+        assert_eq!(block_entry.value().demote_to_string(), Some(string_value));
+        assert_eq!(block_entry.consumed(), 1);
+    }
+}
+
+/// Case rejection parity: an expectation that rejects a head at the block level
+/// rejects the same head text at the string level with the same typed error.
+#[test]
+fn string_level_case_rejection_matches_the_block_level_reader() {
+    let lowercase_head = "vector.x";
+    let block_error = DottedExpectation::Capitalized
+        .read_entry(
+            Document::parse(lowercase_head)
+                .expect("valid nota")
+                .root_objects(),
+        )
+        .expect_err("capitalized rejects a lowercase head");
+    let string_error = DottedExpectation::Capitalized
+        .read_string_entry(lowercase_head)
+        .expect_err("capitalized rejects a lowercase head at string level");
+    assert!(matches!(
+        block_error,
+        NotaDecodeError::DottedEntryCaseMismatch { .. }
+    ));
+    assert!(matches!(
+        string_error,
+        NotaDecodeError::DottedEntryCaseMismatch { .. }
+    ));
+
+    let uppercase_head = "Vector.x";
+    let block_error = DottedExpectation::Uncapitalized
+        .read_entry(
+            Document::parse(uppercase_head)
+                .expect("valid nota")
+                .root_objects(),
+        )
+        .expect_err("uncapitalized rejects an uppercase head");
+    let string_error = DottedExpectation::Uncapitalized
+        .read_string_entry(uppercase_head)
+        .expect_err("uncapitalized rejects an uppercase head at string level");
+    assert!(matches!(
+        block_error,
+        NotaDecodeError::DottedEntryCaseMismatch { .. }
+    ));
+    assert!(matches!(
+        string_error,
+        NotaDecodeError::DottedEntryCaseMismatch { .. }
+    ));
+}
+
+/// No-period parity: a period-free string is not a dotted entry, the same
+/// rejection the block-level reader gives a period-free leading atom.
+#[test]
+fn string_level_period_free_text_is_not_a_dotted_entry() {
+    let error = DottedExpectation::Uncapitalized
+        .read_string_entry("alpha")
+        .expect_err("a period-free string is not a dotted entry");
+    assert!(matches!(error, NotaDecodeError::ExpectedDottedEntry { .. }));
+}
+
+/// A string ending at the period has no following block to supply the value,
+/// so the string-level form reports a missing value.
+#[test]
+fn string_level_text_ending_at_the_period_is_a_missing_value() {
+    let error = DottedExpectation::Uncapitalized
+        .read_string_entry("alpha.")
+        .expect_err("a string ending at the period has no value");
+    assert!(matches!(
+        error,
+        NotaDecodeError::DottedEntryMissingValue { .. }
+    ));
+}
+
+/// The schema-language motivating shapes: a `paramName.Type` parameter binding
+/// splits at the first dot into key and type, and a `path.a.b.c` import path
+/// keeps the dotted remainder whole as the value.
+#[test]
+fn string_level_reads_the_schema_language_motivating_shapes() {
+    let (key, value) = DottedExpectation::Uncapitalized
+        .read_string_entry("paramName.Type")
+        .expect("parameter binding splits");
+    assert_eq!(key, "paramName");
+    assert_eq!(value, "Type");
+
+    let (key, value) = DottedExpectation::Uncapitalized
+        .read_string_entry("path.a.b.c")
+        .expect("import path splits at the first dot");
+    assert_eq!(key, "path");
+    assert_eq!(value, "a.b.c");
+}
