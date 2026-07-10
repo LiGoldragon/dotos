@@ -160,6 +160,46 @@ tagged or data-carrying macro variant.
   result for exploration and diagnostics, but it is no longer the typed-node
   trait boundary.
 
+## Dotted prefix reading
+
+NOTA has no space-separated key-value pairs anywhere. A map entry is written as a
+dotted prefix, `key.value`, and the end state keeps no other space-separated pair
+form. A brace map is a sequence of `key.value` entries, not a run of adjacent
+key and value objects.
+
+The dot can never be a primary parsing character, because a string can contain
+periods. Dot handling is situation-dependent: whether a leading dot splits a
+prefix off the rest of an atom is decided by the position, never by the presence
+of the character.
+
+The reader is context-aware and mode-switching. NOTA is strictly typed and
+positional, so the expected type is known at every position; the reader switches
+mode constantly as it advances, always knowing what it can possibly expect next.
+A dotted prefix is conditionally expected under this mechanism — expected in some
+modes and impossible in others.
+
+CONSTRAINT (invariant): dot-splitting is decided purely by expectation mode,
+never by scanning content.
+
+- When the expected position can carry a dotted prefix, the reader looks for a
+  top-level dot in the leading atom and splits the prefix from the remainder.
+- In every other mode — expected `String` above all — a period is an ordinary
+  atom character and no split occurs.
+- The same text splits or does not split based only on the expected type at that
+  position, so no value's content can ever change its parse shape. This is what
+  "atomically composable and predictable" means for this mechanism.
+
+There are exactly two dotted-prefix expectation kinds:
+
+- CAPITALIZED: the head is a capitalized object — a type or generic application
+  such as `Vector.X` or `Map.(Key Value)`.
+- UNCAPITALIZED: leading lowercase name segments — map keys, import path
+  segments, and field disambiguators.
+
+The mechanism is implemented once in the NOTA reader and exported as a reusable
+mechanism. Downstream consumers — schema-language above all — reuse the exported
+dotted-prefix reader rather than hand-rolling their own dotted-prefix reading.
+
 ## Boundary
 
 This crate does not know what a schema type, field, declaration, enum, macro,
@@ -179,7 +219,9 @@ not discover macro meaning through a global parser.
 The schema layer assigns declaration meaning to pipe-parenthesis and
 pipe-brace, but `nota` only reports those delimiter shapes and their
 children. It does not promote macro heads, validate symbol case, or decide
-whether a parenthesized object is a variant, a macro call, or ordinary data.
+whether a parenthesized object is a variant, a macro call, or ordinary data. It
+reads a dotted prefix only where the expected type makes one possible; the raw
+period stays an ordinary atom character everywhere else.
 
 Macros themselves are data, the macro most of all: a macro is a serializable
 data object with a name, position, pattern, and template, where pattern and
@@ -243,8 +285,8 @@ blocks, so this is derive / structural-vocabulary work, not a seed-parser
 change.
 
 The codec's collection value shapes are structural NOTA values: `Vec<T>` is a
-square-bracket block, `BTreeMap<K, V>` is a brace block of key/value pairs, and
-`Option<T>` is `None` or `(Some value)`. Those are serialization shapes, not
+square-bracket block, `BTreeMap<K, V>` is a brace block of dotted-prefix
+`key.value` entries, and `Option<T>` is `None` or `(Some value)`. Those are serialization shapes, not
 schema declaration syntax. The square bracket is and always has been NOTA's
 vector container delimiter; higher layers may read a vector at a typed position
 as a product or field list, but `[]` itself stays a vector and is never redefined
@@ -255,9 +297,10 @@ content is a vector that a typed position may read as a field list (Spirit
 `ychx`). At a typed position expecting a string or
 string newtype, bracket content reads as string data — a string is a vector of
 characters — so `[]` is not unconditionally a vector (Spirit `voa8`). The brace
-is a strict key-value map: every entry is exactly one key plus one value, with no
-single-token entries, and key-value-ness is low-level NOTA structure that macros
-may consume at schema positions (Spirit `ghw7`).
+is a strict key-value map: every entry is exactly one key plus one value written
+as a dotted-prefix `key.value` pair, with no single-token entries and no
+space-separated pair form, and key-value-ness is low-level NOTA structure that
+macros may consume at schema positions (Spirit `ghw7`).
 
 NOTA structs are positional: position plus the read-time schema encodes meaning,
 with no field-name tags. A plain PascalCase token is a unit variant; a
@@ -269,10 +312,11 @@ that enum type name and supply the enum body directly — `((Parse Expression)
 type — while variant tags inside the body stay named (Spirit `3sq4`). An enum
 variant with an optional empty payload still renders as a data-carrying record
 such as `(Technology None)`, not as a bare `Technology` atom (Spirit `oqwb`).
-Multi-argument type references and applications use the flat positional form —
-head then arguments inline, as in `Map K V` — rather than a grouped form that
-re-wraps the arguments, since the head already names the construct and the flat
-form stays legible while spending fewer characters (Spirit `wqdi`). Encoders
+Multi-argument type references and applications use the CAPITALIZED dotted-prefix
+form — a capitalized head then its arguments as a dotted group, as in
+`Map.(Key Value)` — so the head names the construct and the application reads as
+one dotted object rather than a run of space-separated arguments; this supersedes
+the earlier flat `Map K V` positional form (Spirit `wqdi`). Encoders
 avoid over-bracketing: bare-safe atoms encode bare inside typed positions such as
 vectors, bracket forms are reserved for whitespace and delimiter safety, and
 typed projection drops a redundant wrapper delimiter when the enclosing head
@@ -288,7 +332,8 @@ belong to schema; splitting only composites into schema while leaving scalar
 names in NOTA would be inconsistent (Spirit `sqx6`). The composite type
 constructors are nevertheless NOTA-layer datatype objects that schema reads, not
 schema-only sugar: `Vec`, `Option`, and `KeyValue` (named `KeyValue` rather than
-`Map`, which risks reading as a verb, and followed by key type then value type),
+`Map`, which risks reading as a verb, and carrying key type then value type as a
+dotted-prefix capitalized application such as `KeyValue.(Key Value)`),
 where a plain type-reference position can name scalars or composites without
 declaring a new type while declarations use the positional struct, enum, and
 newtype forms (Spirit `2dzp`). The three NOTA delimiters map to the three schema
