@@ -13,6 +13,7 @@ mod expectation;
 mod instance_schema;
 mod macros;
 mod parser;
+mod pretty;
 
 pub use codec::{
     ByteSequence, FixedByteSequence, NotaBlock, NotaBody, NotaBodyDecode, NotaBodyEncode,
@@ -37,3 +38,4 @@ pub use parser::{
     Atom, Block, Delimiter, Document, NotaError, PipeText, SourcePosition, SourceSpan,
     StructureHeader, StructureShape, StructureSlot,
 };
+pub use pretty::PrettyLayout;
