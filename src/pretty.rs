@@ -22,6 +22,47 @@
 
 use crate::{Block, Delimiter, Document, NotaError};
 
+/// How a component CLI writes a canonical NOTA reply to its output.
+///
+/// Every NOTA-printing CLI shares one print shape: it encodes a typed reply to
+/// a canonical single line and writes it. `NotaOutputForm` is the one place that
+/// decides whether that line is written as-is or reflowed for reading, so each
+/// print site stays a single call and the pretty decision is not re-derived at
+/// every site. The default `Canonical` form is byte-identical to the bare
+/// encoder output every consumer and golden depends on; `Pretty`, selected when
+/// the caller passed `--pretty`, reflows the same document through
+/// [`PrettyLayout`] and re-parses to the identical document.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NotaOutputForm {
+    Canonical,
+    Pretty,
+}
+
+impl NotaOutputForm {
+    /// The output form a CLI should use given whether `--pretty` was requested.
+    pub fn from_pretty_requested(pretty_requested: bool) -> Self {
+        if pretty_requested {
+            Self::Pretty
+        } else {
+            Self::Canonical
+        }
+    }
+
+    /// Project an already-encoded canonical NOTA line into the chosen form.
+    ///
+    /// A canonical encoder line always re-parses, so the pretty projection
+    /// cannot fail in practice; if a caller ever passes text that does not
+    /// parse, the canonical text is returned unchanged rather than lost.
+    pub fn render(&self, canonical: &str) -> String {
+        match self {
+            Self::Canonical => canonical.to_owned(),
+            Self::Pretty => PrettyLayout::standard()
+                .render_nota(canonical)
+                .unwrap_or_else(|_| canonical.to_owned()),
+        }
+    }
+}
+
 /// A deterministic readability layout for NOTA documents.
 ///
 /// The layout carries the two policy values that drive every break decision:

@@ -38,4 +38,4 @@ pub use parser::{
     Atom, Block, Delimiter, Document, NotaError, PipeText, SourcePosition, SourceSpan,
     StructureHeader, StructureShape, StructureSlot,
 };
-pub use pretty::PrettyLayout;
+pub use pretty::{NotaOutputForm, PrettyLayout};

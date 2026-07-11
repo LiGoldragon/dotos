@@ -1,4 +1,4 @@
-use nota::{Document, PrettyLayout};
+use nota::{Document, NotaOutputForm, PrettyLayout};
 
 /// Collapse any NOTA source back to its canonical single-line form by rendering
 /// with an unbounded line width, so every block fits inline. This is the
@@ -153,6 +153,18 @@ block|] tail)",
             );
         }
     }
+}
+
+#[test]
+fn output_form_canonical_is_byte_identical_and_pretty_reflows() {
+    let canonical = "(Alpha (Beta gamma) delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma)";
+
+    let unchanged = NotaOutputForm::from_pretty_requested(false).render(canonical);
+    assert_eq!(unchanged, canonical);
+
+    let pretty = NotaOutputForm::from_pretty_requested(true).render(canonical);
+    assert!(pretty.contains('\n'));
+    assert_eq!(collapse(canonical), collapse(&pretty));
 }
 
 #[test]
