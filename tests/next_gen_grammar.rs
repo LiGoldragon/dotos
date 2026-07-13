@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use nota::{Document, NotaEncode, NotaSource};
+use nota::{Document, NotaDecode, NotaEncode, NotaSource};
 
 /// A glued period binds a head to the following payload as one application
 /// block; the head and payload are recovered structurally, not by splitting
@@ -91,7 +91,11 @@ fn a_dotted_path_reconstructs_its_flat_text() {
     let document = Document::parse("rustfmt.skip").expect("valid nota");
     let block = document.root_object_at(0).expect("root");
     assert!(block.is_application(), "rustfmt.skip is an application");
-    assert_eq!(block.demote_to_string(), None, "an application is not a string");
+    assert_eq!(
+        block.demote_to_string(),
+        None,
+        "an application is not a string"
+    );
     assert_eq!(block.dotted_text(), Some("rustfmt.skip".to_owned()));
 }
 
@@ -100,7 +104,9 @@ fn a_dotted_path_reconstructs_its_flat_text() {
 /// the dotted text. The scalar still round-trips to its canonical form.
 #[test]
 fn float_literal_round_trips_through_its_structural_period() {
-    let value = NotaSource::new("-122.3").parse::<f64>().expect("float decodes");
+    let value = NotaSource::new("-122.3")
+        .parse::<f64>()
+        .expect("float decodes");
     assert_eq!(value, -122.3);
     assert_eq!((-122.3_f64).to_nota(), "-122.3");
     assert_eq!(
@@ -142,7 +148,10 @@ fn redundant_string_parentheses_are_rejected() {
     let error = NotaSource::new("(schema)")
         .parse::<String>()
         .expect_err("redundant parentheses reject");
-    assert!(error.to_string().contains("use schema"), "error was {error}");
+    assert!(
+        error.to_string().contains("use schema"),
+        "error was {error}"
+    );
 }
 
 /// A vector keeps the square bracket; an option is a dotted variant — `None`
@@ -192,7 +201,10 @@ fn maps_are_map_headed_applications_over_dotted_entries() {
 fn pipe_paren_multiline_string_round_trips_with_escapes() {
     let original = "line one\nline two with |) marker".to_owned();
     let encoded = original.to_nota();
-    assert!(encoded.starts_with("(|") && encoded.ends_with("|)"), "{encoded}");
+    assert!(
+        encoded.starts_with("(|") && encoded.ends_with("|)"),
+        "{encoded}"
+    );
     assert_eq!(
         NotaSource::new(&encoded)
             .parse::<String>()
@@ -214,6 +226,70 @@ fn psyche_authored_newtype_sample_parses_with_intended_shape() {
     assert_eq!(visibility.demote_to_string(), Some("Public"));
     let (kind, body) = remainder.as_application().expect("kind application");
     assert_eq!(kind.demote_to_string(), Some("Newtype"));
-    assert!(body.is_parenthesis(), "the body is the parenthesised payload");
-    assert_eq!(body.holds_root_objects(), 3, "name, attributes vector, type");
+    assert!(
+        body.is_parenthesis(),
+        "the body is the parenthesised payload"
+    );
+    assert_eq!(
+        body.holds_root_objects(),
+        3,
+        "name, attributes vector, type"
+    );
+}
+
+#[derive(Debug, PartialEq, Eq, nota::NotaEncode, nota::NotaDecode)]
+enum Signal {
+    Idle,
+    Tick(u64),
+    Range(u64, u64),
+}
+
+#[derive(Debug, PartialEq, Eq, nota::NotaEncode, nota::NotaDecode)]
+struct Marker {
+    label: String,
+    count: u64,
+}
+
+/// A derived enum encodes unit variants as bare atoms, single-field variants
+/// as `Variant.payload`, and multi-field variants as `Variant.{f0 f1}`, and
+/// each round-trips (item b — dotted data variants replace `(Variant Data)`).
+#[test]
+fn derived_enum_uses_dotted_variants() {
+    for (value, text) in [
+        (Signal::Idle, "Idle"),
+        (Signal::Tick(7), "Tick.7"),
+        (Signal::Range(3, 9), "Range.{3 9}"),
+    ] {
+        assert_eq!(value.to_nota(), text, "encode {value:?}");
+        assert_eq!(
+            Signal::from_nota_block(
+                Document::parse(text)
+                    .expect("parses")
+                    .root_object_at(0)
+                    .expect("root")
+            )
+            .expect("decodes"),
+            value,
+            "round trip {text}"
+        );
+    }
+}
+
+/// A derived named struct encodes its body as a brace record under the
+/// reshuffle (`{}` = structs) and round-trips.
+#[test]
+fn derived_struct_body_is_a_brace_record() {
+    let marker = Marker {
+        label: "commit sequence".to_owned(),
+        count: 4,
+    };
+    assert_eq!(marker.to_nota(), "{(commit sequence) 4}");
+    let decoded = Marker::from_nota_block(
+        Document::parse("{(commit sequence) 4}")
+            .expect("parses")
+            .root_object_at(0)
+            .expect("root"),
+    )
+    .expect("decodes");
+    assert_eq!(decoded, marker);
 }

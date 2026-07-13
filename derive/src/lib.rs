@@ -226,7 +226,7 @@ impl StructDerive {
                     impl #implementation_generics ::nota::NotaDecode for #name #type_generics #where_clause {
                         fn from_nota_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
                             let body = ::nota::NotaBlock::new(block).expect_body(
-                                ::nota::Delimiter::Parenthesis,
+                                ::nota::Delimiter::Brace,
                                 #type_name,
                             )?;
                             <Self as ::nota::NotaBodyDecode>::from_nota_body(&body)
@@ -296,7 +296,7 @@ impl StructDerive {
                     impl #implementation_generics ::nota::NotaEncode for #name #type_generics #where_clause {
                         fn to_nota(&self) -> String {
                             <Self as ::nota::NotaBodyEncode>::to_nota_body(self)
-                                .to_delimited_nota(::nota::Delimiter::Parenthesis)
+                                .to_delimited_nota(::nota::Delimiter::Brace)
                         }
                     }
                     #document_impl
@@ -417,22 +417,25 @@ impl EnumDerive {
             .filter(|variant| !matches!(variant.fields, Fields::Unit))
             .map(|variant| PayloadVariantDecode::new(&name, variant).arm());
         quote! {
-            impl #implementation_generics ::nota::NotaBodyDecode for #name #type_generics #where_clause {
-                fn from_nota_body(body: &::nota::NotaBody<'_>) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
-                    let root_objects = body.root_objects();
-                    if root_objects.len() == 1 {
-                        if let Some(variant) = root_objects[0].demote_to_string() {
-                            return match variant {
-                                #(#unit_variants)*
-                                other => Err(::nota::NotaDecodeError::UnknownVariant {
-                                    enum_name: #enum_name,
-                                    variant: other.to_owned(),
-                                }),
-                            };
-                        }
+            impl #implementation_generics ::nota::NotaDecode for #name #type_generics #where_clause {
+                fn from_nota_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
+                    // A unit variant is a bare atom; a data variant is the
+                    // dotted application `Variant.payload`, whose head atom
+                    // names the variant and whose payload carries the fields.
+                    if let Some(variant) = block.atom().map(|atom| atom.text()) {
+                        return match variant {
+                            #(#unit_variants)*
+                            other => Err(::nota::NotaDecodeError::UnknownVariant {
+                                enum_name: #enum_name,
+                                variant: other.to_owned(),
+                            }),
+                        };
                     }
-                    let children = body.expect_fields(#enum_name, 2)?;
-                    let variant = children[0].demote_to_string().ok_or(::nota::NotaDecodeError::ExpectedAtom {
+                    let (head, payload) = block.as_application().ok_or(::nota::NotaDecodeError::ExpectedDelimited {
+                        type_name: #enum_name,
+                        delimiter: "unit-variant atom or Variant.payload application",
+                    })?;
+                    let variant = head.demote_to_string().ok_or(::nota::NotaDecodeError::ExpectedAtom {
                         type_name: "enum variant",
                     })?;
                     match variant {
@@ -444,18 +447,10 @@ impl EnumDerive {
                     }
                 }
             }
-            impl #implementation_generics ::nota::NotaDecode for #name #type_generics #where_clause {
-                fn from_nota_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
-                    if block.demote_to_string().is_some() {
-                        let root_objects = ::std::slice::from_ref(block);
-                        let body = ::nota::NotaBody::new(root_objects);
-                        return <Self as ::nota::NotaBodyDecode>::from_nota_body(&body);
-                    }
-                    let body = ::nota::NotaBlock::new(block).expect_body(
-                        ::nota::Delimiter::Parenthesis,
-                        #enum_name,
-                    )?;
-                    <Self as ::nota::NotaBodyDecode>::from_nota_body(&body)
+            impl #implementation_generics ::nota::NotaBodyDecode for #name #type_generics #where_clause {
+                fn from_nota_body(body: &::nota::NotaBody<'_>) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
+                    let objects = body.expect_fields(#enum_name, 1)?;
+                    <Self as ::nota::NotaDecode>::from_nota_block(&objects[0])
                 }
             }
         }
@@ -470,23 +465,18 @@ impl EnumDerive {
             .data
             .variants
             .iter()
-            .map(|variant| VariantEncode::new(&name, variant).body_arm());
+            .map(|variant| VariantEncode::new(&name, variant).nota_arm());
         quote! {
-            impl #implementation_generics ::nota::NotaBodyEncode for #name #type_generics #where_clause {
-                fn to_nota_body(&self) -> ::nota::NotaBodyEncoding {
+            impl #implementation_generics ::nota::NotaEncode for #name #type_generics #where_clause {
+                fn to_nota(&self) -> String {
                     match self {
                         #(#arms)*
                     }
                 }
             }
-            impl #implementation_generics ::nota::NotaEncode for #name #type_generics #where_clause {
-                fn to_nota(&self) -> String {
-                    let body = <Self as ::nota::NotaBodyEncode>::to_nota_body(self);
-                    if body.fields().len() == 1 {
-                        body.to_nota()
-                    } else {
-                        body.to_delimited_nota(::nota::Delimiter::Parenthesis)
-                    }
+            impl #implementation_generics ::nota::NotaBodyEncode for #name #type_generics #where_clause {
+                fn to_nota_body(&self) -> ::nota::NotaBodyEncoding {
+                    ::nota::NotaBodyEncoding::new(vec![::nota::NotaEncode::to_nota(self)])
                 }
             }
         }
@@ -531,7 +521,7 @@ impl<'variant> PayloadVariantDecode<'variant> {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
-                    #tag => Ok(#enum_name::#variant_name(<#field_type as ::nota::NotaDecode>::from_nota_block(&children[1])?)),
+                    #tag => Ok(#enum_name::#variant_name(<#field_type as ::nota::NotaDecode>::from_nota_block(payload)?)),
                 }
             }
             Fields::Unnamed(fields) => {
@@ -545,8 +535,8 @@ impl<'variant> PayloadVariantDecode<'variant> {
                 });
                 quote! {
                     #tag => {
-                        let payload_children = ::nota::NotaBlock::new(&children[1]).expect_children(
-                            ::nota::Delimiter::Parenthesis,
+                        let payload_children = ::nota::NotaBlock::new(payload).expect_children(
+                            ::nota::Delimiter::Brace,
                             #tag,
                             #field_count,
                         )?;
@@ -577,27 +567,27 @@ impl<'variant> VariantEncode<'variant> {
         Self { enum_name, variant }
     }
 
-    fn body_arm(&self) -> TokenStreamTwo {
+    fn nota_arm(&self) -> TokenStreamTwo {
         let enum_name = self.enum_name;
         let variant_name = &self.variant.ident;
         let tag = variant_name.to_string();
         match &self.variant.fields {
+            // A unit variant is a bare atom.
             Fields::Unit => quote! {
-                #enum_name::#variant_name => {
-                    ::nota::NotaBodyEncoding::new(vec![#tag.to_owned()])
-                }
+                #enum_name::#variant_name => #tag.to_owned(),
             },
+            // A single-field variant dots its tag onto the payload's own
+            // canonical form: `Some.42`, `Variant.(a b)`, `Variant.[ … ]`.
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let binding = format_ident!("payload");
                 quote! {
                     #enum_name::#variant_name(#binding) => {
-                        ::nota::NotaBodyEncoding::new(vec![
-                            #tag.to_owned(),
-                            ::nota::NotaEncode::to_nota(#binding),
-                        ])
+                        ::std::format!("{}.{}", #tag, ::nota::NotaEncode::to_nota(#binding))
                     }
                 }
             }
+            // A multi-field variant dots its tag onto a brace record of the
+            // positional field values: `Variant.{f0 f1}`.
             Fields::Unnamed(fields) => {
                 let bindings = (0..fields.unnamed.len())
                     .map(|index| format_ident!("payload_field_{}", index))
@@ -609,10 +599,10 @@ impl<'variant> VariantEncode<'variant> {
                 });
                 quote! {
                     #enum_name::#variant_name(#(#bindings),*) => {
-                        let payload = ::nota::Delimiter::Parenthesis.wrap([
+                        let payload = ::nota::Delimiter::Brace.wrap([
                             #(#encoded_fields),*
                         ]);
-                        ::nota::NotaBodyEncoding::new(vec![#tag.to_owned(), payload])
+                        ::std::format!("{}.{}", #tag, payload)
                     }
                 }
             }
