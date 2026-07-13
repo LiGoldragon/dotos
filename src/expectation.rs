@@ -45,50 +45,38 @@ impl DottedExpectation {
     }
 
     /// Read one dotted entry from the head of a block sequence under this
-    /// expectation. The leading block must be an atom carrying a top-level
-    /// period. When text follows the period inside that atom, the value stays
-    /// inline and one block is consumed; when the atom ends at the period, the
-    /// value is the following block and two blocks are consumed.
+    /// expectation. The leading block must be a dot-application `key.value`
+    /// whose head is an atom of the accepted case. The key is that head atom
+    /// and the value is the application's payload — which may itself be a
+    /// nested application when the value is dotted (`key.a.b.c`), since the raw
+    /// grammar binds the period right-associatively. A dotted entry is always
+    /// exactly one application block, so exactly one block is consumed; the
+    /// former inline-versus-following-block split no longer exists now that the
+    /// raw parser binds the period.
     pub fn read_entry(self, blocks: &[Block]) -> Result<DottedEntry, NotaDecodeError> {
-        let head = blocks.first().ok_or(NotaDecodeError::ExpectedDottedEntry {
+        let block = blocks.first().ok_or(NotaDecodeError::ExpectedDottedEntry {
             expectation: self.description(),
         })?;
-        let atom = head.atom().ok_or(NotaDecodeError::ExpectedDottedEntry {
-            expectation: self.description(),
-        })?;
-        let (prefix, remainder) =
-            atom.split_at_first_dot()
+        let (head, payload) =
+            block
+                .as_application()
                 .ok_or(NotaDecodeError::ExpectedDottedEntry {
                     expectation: self.description(),
                 })?;
-        if !self.accepts_head(prefix.text()) {
+        let key_atom = head.atom().ok_or(NotaDecodeError::ExpectedDottedEntry {
+            expectation: self.description(),
+        })?;
+        if !self.accepts_head(key_atom.text()) {
             return Err(NotaDecodeError::DottedEntryCaseMismatch {
                 expectation: self.description(),
-                prefix: prefix.text().to_owned(),
+                prefix: key_atom.text().to_owned(),
             });
         }
-        let key = Block::Atom(prefix);
-        match remainder {
-            Some(value_atom) => Ok(DottedEntry {
-                key,
-                value: Block::Atom(value_atom),
-                consumed: 1,
-            }),
-            None => {
-                let value =
-                    blocks
-                        .get(1)
-                        .cloned()
-                        .ok_or(NotaDecodeError::DottedEntryMissingValue {
-                            expectation: self.description(),
-                        })?;
-                Ok(DottedEntry {
-                    key,
-                    value,
-                    consumed: 2,
-                })
-            }
-        }
+        Ok(DottedEntry {
+            key: head.clone(),
+            value: payload.clone(),
+            consumed: 1,
+        })
     }
 
     /// Read one dotted entry from a single already-extracted string under this

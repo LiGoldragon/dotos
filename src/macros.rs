@@ -57,7 +57,7 @@ impl MacroDelimiter {
     pub fn from_block(block: &Block) -> Option<Self> {
         match block {
             Block::Delimited { delimiter, .. } => Some(Self::from_delimiter(*delimiter)),
-            Block::PipeText(_) | Block::Atom(_) => None,
+            Block::Application { .. } | Block::PipeText(_) | Block::Atom(_) => None,
         }
     }
 

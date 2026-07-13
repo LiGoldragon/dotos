@@ -7,19 +7,6 @@ pub struct SourcePosition {
     pub column: usize,
 }
 
-impl SourcePosition {
-    /// Advance this position through the given single-line atom text. Atoms
-    /// never contain newlines, so the line is unchanged and the column moves
-    /// by the character count while the byte offset moves by the byte length.
-    fn advance_through(self, text: &str) -> Self {
-        Self {
-            byte_offset: self.byte_offset + text.len(),
-            line: self.line,
-            column: self.column + text.chars().count(),
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SourceSpan {
     pub start: SourcePosition,
@@ -73,6 +60,21 @@ pub enum Block {
         span: SourceSpan,
         root_objects: Vec<Block>,
     },
+    /// A dot-application: a head object bound to the payload that immediately
+    /// follows a glued period, as one node. `Head.Payload` (bare-atom payload),
+    /// `Head.( … )` / `Head.[ … ]` / `Head.{ … }` (delimited payload), and
+    /// `Head.( | … | )` (multiline-string payload) all parse to this. The dot is
+    /// right-associative, so `A.B.C` is `App(A, App(B, C))`: the head is always
+    /// the leftmost single segment and the payload is the remainder, itself an
+    /// application when the remainder is dotted. The head is a single primary
+    /// object — an atom or a delimited block — and the payload is one object.
+    /// This is the raw-layer, expectation-agnostic binding: the period is a
+    /// structural operator here, not atom text.
+    Application {
+        span: SourceSpan,
+        head: Box<Block>,
+        payload: Box<Block>,
+    },
     PipeText(PipeText),
     Atom(Atom),
 }
@@ -81,6 +83,7 @@ impl Block {
     pub fn source_span(&self) -> SourceSpan {
         match self {
             Self::Delimited { span, .. } => *span,
+            Self::Application { span, .. } => *span,
             Self::PipeText(pipe_text) => pipe_text.span,
             Self::Atom(atom) => atom.span,
         }
@@ -129,8 +132,33 @@ impl Block {
         matches!(self, Self::Atom(_))
     }
 
+    pub fn is_application(&self) -> bool {
+        matches!(self, Self::Application { .. })
+    }
+
     pub fn is_delimited_with(&self, delimiter: Delimiter) -> bool {
         matches!(self, Self::Delimited { delimiter: found, .. } if *found == delimiter)
+    }
+
+    /// The head and payload of a dot-application, or `None` for any other
+    /// block. The head is the object left of the period (itself an application
+    /// for a dotted chain); the payload is the single primary object right of
+    /// the period.
+    pub fn as_application(&self) -> Option<(&Block, &Block)> {
+        match self {
+            Self::Application { head, payload, .. } => Some((head, payload)),
+            Self::Delimited { .. } | Self::PipeText(_) | Self::Atom(_) => None,
+        }
+    }
+
+    /// The head object of a dot-application — the object left of the period.
+    pub fn application_head(&self) -> Option<&Block> {
+        self.as_application().map(|(head, _)| head)
+    }
+
+    /// The payload object of a dot-application — the object right of the period.
+    pub fn application_payload(&self) -> Option<&Block> {
+        self.as_application().map(|(_, payload)| payload)
     }
 
     pub fn as_delimited(&self, delimiter: Delimiter) -> Option<&[Block]> {
@@ -140,14 +168,17 @@ impl Block {
                 root_objects,
                 ..
             } if *found == delimiter => Some(root_objects),
-            Self::Delimited { .. } | Self::PipeText(_) | Self::Atom(_) => None,
+            Self::Delimited { .. }
+            | Self::Application { .. }
+            | Self::PipeText(_)
+            | Self::Atom(_) => None,
         }
     }
 
     pub fn holds_root_objects(&self) -> usize {
         match self {
             Self::Delimited { root_objects, .. } => root_objects.len(),
-            Self::PipeText(_) | Self::Atom(_) => 0,
+            Self::Application { .. } | Self::PipeText(_) | Self::Atom(_) => 0,
         }
     }
 
@@ -162,21 +193,21 @@ impl Block {
     pub fn root_object_at(&self, index: usize) -> Option<&Block> {
         match self {
             Self::Delimited { root_objects, .. } => root_objects.get(index),
-            Self::PipeText(_) | Self::Atom(_) => None,
+            Self::Application { .. } | Self::PipeText(_) | Self::Atom(_) => None,
         }
     }
 
     pub fn root_objects(&self) -> &[Block] {
         match self {
             Self::Delimited { root_objects, .. } => root_objects,
-            Self::PipeText(_) | Self::Atom(_) => &[],
+            Self::Application { .. } | Self::PipeText(_) | Self::Atom(_) => &[],
         }
     }
 
     pub fn atom(&self) -> Option<&Atom> {
         match self {
             Self::Atom(atom) => Some(atom),
-            Self::Delimited { .. } | Self::PipeText(_) => None,
+            Self::Delimited { .. } | Self::Application { .. } | Self::PipeText(_) => None,
         }
     }
 
@@ -203,7 +234,26 @@ impl Block {
         match self {
             Self::Atom(atom) => Some(atom.text.as_str()),
             Self::PipeText(pipe_text) => Some(pipe_text.text.as_str()),
-            Self::Delimited { .. } => None,
+            Self::Delimited { .. } | Self::Application { .. } => None,
+        }
+    }
+
+    /// The flat dotted text of an atom or a dotted chain of atoms, joining the
+    /// segments with periods: `Atom("42")` → `"42"`, `App(rustfmt, skip)` →
+    /// `"rustfmt.skip"`, `App(App(-122, 3), …)` and so on. `None` when any
+    /// segment is a delimited or pipe-text block, since those carry no flat
+    /// text form. This is how an expected-type reader recovers a literal that
+    /// the structural period split apart — a dotted Rust path, a float whose
+    /// fractional period is a structural dot, or a dotted map value.
+    pub fn dotted_text(&self) -> Option<String> {
+        match self {
+            Self::Atom(atom) => Some(atom.text.clone()),
+            Self::Application { head, payload, .. } => {
+                let head = head.dotted_text()?;
+                let payload = payload.dotted_text()?;
+                Some(format!("{head}.{payload}"))
+            }
+            Self::Delimited { .. } | Self::PipeText(_) => None,
         }
     }
 
@@ -221,6 +271,7 @@ impl Block {
                 delimiter: Delimiter::Brace,
                 ..
             } => StructureShape::Brace,
+            Self::Application { .. } => StructureShape::Application,
             Self::PipeText(_) => StructureShape::PipeText,
             Self::Atom(_) => StructureShape::Atom,
         }
@@ -387,6 +438,7 @@ pub enum StructureShape {
     SquareBracket,
     Brace,
     PipeText,
+    Application,
     Unknown,
 }
 
@@ -399,6 +451,7 @@ impl StructureShape {
             Self::SquareBracket => "square bracket",
             Self::Brace => "brace",
             Self::PipeText => "pipe text",
+            Self::Application => "application",
             Self::Unknown => "unknown",
         }
     }
@@ -411,6 +464,7 @@ impl StructureShape {
             Self::SquareBracket => 3,
             Self::Brace => 4,
             Self::PipeText => 5,
+            Self::Application => 6,
             Self::Unknown => 15,
         }
     }
@@ -423,6 +477,7 @@ impl StructureShape {
             3 => Self::SquareBracket,
             4 => Self::Brace,
             5 => Self::PipeText,
+            6 => Self::Application,
             _ => Self::Unknown,
         }
     }
@@ -526,32 +581,6 @@ impl Atom {
         Some((prefix, remainder))
     }
 
-    /// Split this atom at its first period into a prefix atom and, when text
-    /// follows the period within the same atom, a remainder atom. `None` when
-    /// the atom carries no period. Spans are attached to the slices produced by
-    /// the shared `split_text_at_first_dot` rule.
-    pub fn split_at_first_dot(&self) -> Option<(Atom, Option<Atom>)> {
-        let (prefix_text, remainder_text) = Atom::split_text_at_first_dot(&self.text)?;
-        let dot = prefix_text.len();
-        let prefix = Atom::new(
-            prefix_text.to_owned(),
-            SourceSpan {
-                start: self.span.start,
-                end: self.span.start.advance_through(prefix_text),
-            },
-        );
-        let remainder = remainder_text.map(|remainder_text| {
-            Atom::new(
-                remainder_text.to_owned(),
-                SourceSpan {
-                    start: self.span.start.advance_through(&self.text[..dot + 1]),
-                    end: self.span.end,
-                },
-            )
-        });
-        Some((prefix, remainder))
-    }
-
     pub fn qualifies_as_symbol(&self) -> bool {
         !self.text.is_empty()
             && self
@@ -598,6 +627,19 @@ pub enum NotaError {
     UnclosedPipeText {
         position: SourcePosition,
     },
+    /// A period appeared where an object was expected — the head of a
+    /// dot-application is missing. A dot binds a head to a following payload,
+    /// so it can never start an object.
+    UnexpectedDot {
+        position: SourcePosition,
+    },
+    /// A dot-application period is not immediately followed by a glued payload
+    /// object: whitespace, a comment, a closing delimiter, or the end of input
+    /// followed the period. The payload must be glued to the period with no
+    /// intervening separator.
+    DanglingApplication {
+        position: SourcePosition,
+    },
 }
 
 impl fmt::Display for NotaError {
@@ -620,7 +662,17 @@ impl fmt::Display for NotaError {
             ),
             Self::UnclosedPipeText { position } => write!(
                 formatter,
-                "unclosed `[|` pipe text opened at {}:{}",
+                "unclosed `(|` pipe text opened at {}:{}",
+                position.line, position.column
+            ),
+            Self::UnexpectedDot { position } => write!(
+                formatter,
+                "unexpected `.` with no head object at {}:{}",
+                position.line, position.column
+            ),
+            Self::DanglingApplication { position } => write!(
+                formatter,
+                "dot-application `.` at {}:{} is not followed by a glued payload object",
                 position.line, position.column
             ),
         }
@@ -659,23 +711,76 @@ impl<'source> Parser<'source> {
         }
     }
 
+    /// Parse one object: a primary object and, when a glued period follows, the
+    /// dot-application that binds it to the remainder. Binding is
+    /// right-associative: `A.B.C` is `App(A, App(B, C))`, so the head is always
+    /// the leftmost single segment and the payload is everything after the
+    /// first period. This is the reading every authored form wants —
+    /// `Visibility.name.Type`, `key.Value`, `Public.Newtype.( … )` — where the
+    /// head is a prefix and the payload is the rest. A period binds only when
+    /// it is glued to both its head and its payload; a period followed by
+    /// whitespace, a comment, a closing delimiter, or the end of input is a
+    /// dangling application error.
     fn parse_object(&mut self) -> Result<Block, NotaError> {
+        let head = self.parse_primary()?;
+        if self.peek() != Some('.') {
+            return Ok(head);
+        }
+        let dot = self.cursor.position();
+        self.bump();
+        if !self.at_primary_start() {
+            return Err(NotaError::DanglingApplication { position: dot });
+        }
+        let payload = self.parse_object()?;
+        let span = SourceSpan {
+            start: head.source_span().start,
+            end: payload.source_span().end,
+        };
+        Ok(Block::Application {
+            span,
+            head: Box::new(head),
+            payload: Box::new(payload),
+        })
+    }
+
+    /// Parse a single primary object: a delimited block, a pipe-text block, or
+    /// a bare atom. A primary never consumes a trailing dot-application; that
+    /// binding is [`parse_object`]'s job. A leading period has no head object
+    /// and is rejected.
+    fn parse_primary(&mut self) -> Result<Block, NotaError> {
         match self.peek() {
+            Some('(') if self.peek_next() == Some('|') => self.parse_pipe_text(),
             Some('(') => self.parse_delimited(Delimiter::Parenthesis),
-            Some('[') if self.peek_next() == Some('|') => self.parse_pipe_text(),
             Some('[') => self.parse_delimited(Delimiter::SquareBracket),
             Some('{') => self.parse_delimited(Delimiter::Brace),
-            // A misplaced pipe-close (`|]`, `|)`, `|}`) at an object position
-            // would make `parse_atom` return a zero-width atom without advancing
-            // — the enclosing loop would then spin forever, growing the block
-            // vector until it exhausts memory. Reject it so the parser always
-            // makes progress on malformed input.
+            Some('.') => Err(NotaError::UnexpectedDot {
+                position: self.cursor.position(),
+            }),
+            // A misplaced pipe-close (`|)`) at an object position would make
+            // `parse_atom` return a zero-width atom without advancing — the
+            // enclosing loop would then spin forever, growing the block vector
+            // until it exhausts memory. Reject it so the parser always makes
+            // progress on malformed input.
             Some('|') if self.at_pipe_delimiter_close() => Err(NotaError::UnexpectedClose {
                 found: self.peek_next().unwrap_or('|'),
                 position: self.cursor.position(),
             }),
             Some(_) => Ok(self.parse_atom()),
             None => Ok(self.parse_atom()),
+        }
+    }
+
+    /// Whether the cursor is on a character that can begin a primary object —
+    /// used to decide whether a dot-application period has a glued payload.
+    fn at_primary_start(&self) -> bool {
+        match self.peek() {
+            None => false,
+            Some('.') => false,
+            Some(character) if character.is_whitespace() => false,
+            Some(character) if Delimiter::from_closing(character).is_some() => false,
+            Some(_) if self.at_comment_start() => false,
+            Some(_) if self.at_pipe_delimiter_close() => false,
+            Some(_) => true,
         }
     }
 
@@ -724,7 +829,7 @@ impl<'source> Parser<'source> {
                 } else {
                     text.push('\\');
                 }
-            } else if character == '|' && self.peek_next() == Some(']') {
+            } else if character == '|' && self.peek_next() == Some(')') {
                 self.bump();
                 self.bump();
                 let end = self.cursor.position();
@@ -744,6 +849,7 @@ impl<'source> Parser<'source> {
         let start = self.cursor.position();
         while let Some(character) = self.peek() {
             if character.is_whitespace()
+                || character == '.'
                 || Delimiter::from_opening(character).is_some()
                 || Delimiter::from_closing(character).is_some()
                 || self.at_comment_start()
@@ -759,10 +865,7 @@ impl<'source> Parser<'source> {
     }
 
     fn at_pipe_delimiter_close(&self) -> bool {
-        self.peek() == Some('|')
-            && self
-                .peek_next()
-                .is_some_and(|character| Delimiter::from_closing(character).is_some())
+        self.peek() == Some('|') && self.peek_next() == Some(')')
     }
 
     fn at_comment_start(&self) -> bool {
@@ -853,7 +956,13 @@ impl AtomCharacter {
     }
 
     pub(crate) fn is_bare_string(&self) -> bool {
+        // The period is a structural dot-application operator in the raw
+        // grammar, so it can never sit inside a bare atom. A string whose
+        // content carries a period is therefore delimited, never bare.
         !self.character.is_whitespace()
-            && !matches!(self.character, '"' | '(' | ')' | '[' | ']' | '{' | '}')
+            && !matches!(
+                self.character,
+                '"' | '.' | '(' | ')' | '[' | ']' | '{' | '}'
+            )
     }
 }

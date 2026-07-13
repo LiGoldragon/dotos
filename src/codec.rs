@@ -380,7 +380,7 @@ impl<'block> NotaBlock<'block> {
             }
             return Ok(text.to_owned());
         }
-        if let Some(root_objects) = self.block.as_delimited(Delimiter::SquareBracket) {
+        if let Some(root_objects) = self.block.as_delimited(Delimiter::Parenthesis) {
             let text = root_objects
                 .iter()
                 .map(|block| NotaBlock::new(block).parse_string())
@@ -391,17 +391,15 @@ impl<'block> NotaBlock<'block> {
         }
         Err(NotaDecodeError::ExpectedDelimited {
             type_name: "String",
-            delimiter: "string atom or square bracket",
+            delimiter: "string atom or parenthesis",
         })
     }
 
     pub fn parse_integer(&self) -> Result<u64, NotaDecodeError> {
-        let value = self.parse_integer_text("Integer")?;
+        let value = self.parse_numeric_text("Integer")?;
         value
             .parse::<u64>()
-            .map_err(|_| NotaDecodeError::InvalidInteger {
-                value: value.to_owned(),
-            })
+            .map_err(|_| NotaDecodeError::InvalidInteger { value })
     }
 
     pub fn parse_u16(&self) -> Result<u16, NotaDecodeError> {
@@ -426,12 +424,10 @@ impl<'block> NotaBlock<'block> {
     }
 
     pub fn parse_signed_integer(&self) -> Result<i64, NotaDecodeError> {
-        let value = self.parse_integer_text("SignedInteger")?;
+        let value = self.parse_numeric_text("SignedInteger")?;
         value
             .parse::<i64>()
-            .map_err(|_| NotaDecodeError::InvalidInteger {
-                value: value.to_owned(),
-            })
+            .map_err(|_| NotaDecodeError::InvalidInteger { value })
     }
 
     pub fn parse_i32(&self) -> Result<i32, NotaDecodeError> {
@@ -442,22 +438,25 @@ impl<'block> NotaBlock<'block> {
     }
 
     pub fn parse_float(&self) -> Result<f64, NotaDecodeError> {
-        let value = self.parse_integer_text("Float")?;
+        let value = self.parse_numeric_text("Float")?;
         value
             .parse::<f64>()
             .map_err(|_| NotaDecodeError::InvalidValue {
                 type_name: "Float",
-                value: value.to_owned(),
+                value,
                 reason: "expected a finite or non-finite Rust f64 literal".to_owned(),
             })
     }
 
-    fn parse_integer_text(&self, type_name: &'static str) -> Result<&'block str, NotaDecodeError> {
-        let value = self
-            .block
-            .demote_to_string()
-            .ok_or(NotaDecodeError::ExpectedAtom { type_name })?;
-        Ok(value)
+    /// The flat literal text of a numeric block. A number that carries a
+    /// fractional period — `-122.3` — is a dot-application at the raw layer, so
+    /// its literal is reconstructed from the dotted segments rather than read
+    /// as a single atom; a period-free integer is a bare atom whose text is the
+    /// same reconstruction of one segment.
+    fn parse_numeric_text(&self, type_name: &'static str) -> Result<String, NotaDecodeError> {
+        self.block
+            .dotted_text()
+            .ok_or(NotaDecodeError::ExpectedAtom { type_name })
     }
 
     pub fn parse_boolean(&self) -> Result<bool, NotaDecodeError> {
@@ -491,26 +490,28 @@ impl<'value> NotaString<'value> {
         if self.qualifies_as_bare_string_atom() {
             return self.value.to_owned();
         }
+        // A period is a structural dot-application operator, so a string whose
+        // content carries one cannot ride inside the space-joined `( … )` form
+        // (its children would be parsed as applications); it must use the
+        // literal-preserving multiline `( | … | )` form.
         if self
             .value
             .chars()
-            .any(|character| matches!(character, '[' | ']' | '(' | ')' | '{' | '}' | '\n'))
+            .any(|character| matches!(character, '[' | ']' | '(' | ')' | '{' | '}' | '.' | '\n'))
             || self.value.contains(";;")
         {
-            format!("[|{}|]", self.escape_pipe_text())
+            format!("(|{}|)", self.escape_pipe_text())
         } else {
-            format!("[{}]", self.value)
+            format!("({})", self.value)
         }
     }
 
     fn qualifies_as_bare_string_atom(&self) -> bool {
+        // Every delimiter and the period already disqualify a character from a
+        // bare atom (`is_bare_string`), so no additional close-sequence guard is
+        // needed: a bare string cannot contain `(`, `)`, or `.` at all.
         !self.value.is_empty()
             && !self.value.contains(";;")
-            && !self
-                .value
-                .as_bytes()
-                .windows(2)
-                .any(|pair| matches!(pair, b"|)" | b"|]" | b"|}"))
             && self
                 .value
                 .chars()
@@ -534,7 +535,7 @@ impl<'value> NotaString<'value> {
             if character == '\\' {
                 escaped.push('\\');
                 escaped.push('\\');
-            } else if character == '|' && characters.peek() == Some(&']') {
+            } else if character == '|' && characters.peek() == Some(&')') {
                 escaped.push('\\');
                 escaped.push('|');
             } else {
@@ -582,20 +583,32 @@ impl<'block> NotaCollection<'block> {
         ParseKey: FnMut(&Block) -> Result<Key, NotaDecodeError>,
         ParseValue: FnMut(&Block) -> Result<Value, NotaDecodeError>,
     {
-        let root_objects = self.block.as_delimited(Delimiter::Brace).ok_or(
+        let (head, payload) =
+            self.block
+                .as_application()
+                .ok_or(NotaDecodeError::ExpectedDelimited {
+                    type_name: "Map",
+                    delimiter: "Map.( … ) application",
+                })?;
+        if head.demote_to_string() != Some("Map") {
+            return Err(NotaDecodeError::UnknownVariant {
+                enum_name: "Map",
+                variant: head.dotted_text().unwrap_or_default(),
+            });
+        }
+        let entries = payload.as_delimited(Delimiter::Parenthesis).ok_or(
             NotaDecodeError::ExpectedDelimited {
-                type_name: "BTreeMap",
-                delimiter: Delimiter::Brace.description(),
+                type_name: "Map",
+                delimiter: Delimiter::Parenthesis.description(),
             },
         )?;
         let mut map = BTreeMap::new();
-        let mut index = 0;
-        while index < root_objects.len() {
-            let entry = DottedExpectation::Uncapitalized.read_entry(&root_objects[index..])?;
+        for entry_block in entries {
+            let entry =
+                DottedExpectation::Uncapitalized.read_entry(std::slice::from_ref(entry_block))?;
             let key = parse_key(entry.key())?;
             let value = parse_value(entry.value())?;
             map.insert(key, value);
-            index += entry.consumed();
         }
         Ok(map)
     }
@@ -610,9 +623,14 @@ impl<'block> NotaCollection<'block> {
         if self.block.demote_to_string() == Some("None") {
             return Ok(None);
         }
-        let children =
-            NotaBlock::new(self.block).expect_children(Delimiter::Parenthesis, "Option", 2)?;
-        let tag = children[0]
+        let (head, payload) =
+            self.block
+                .as_application()
+                .ok_or(NotaDecodeError::ExpectedDelimited {
+                    type_name: "Option",
+                    delimiter: "None atom or Some.payload application",
+                })?;
+        let tag = head
             .demote_to_string()
             .ok_or(NotaDecodeError::ExpectedAtom {
                 type_name: "Option tag",
@@ -623,7 +641,7 @@ impl<'block> NotaCollection<'block> {
                 variant: tag.to_owned(),
             });
         }
-        Ok(Some(parse(&children[1])?))
+        Ok(Some(parse(payload)?))
     }
 }
 
@@ -950,7 +968,7 @@ where
         for (key, value) in self {
             entries.push(format!("{}.{}", Key::to_nota(key), Value::to_nota(value)));
         }
-        Delimiter::Brace.wrap(entries)
+        format!("Map.{}", Delimiter::Parenthesis.wrap(entries))
     }
 }
 
@@ -969,7 +987,7 @@ where
 {
     fn to_nota(&self) -> String {
         match self {
-            Some(inner) => Delimiter::Parenthesis.wrap(["Some".to_owned(), Inner::to_nota(inner)]),
+            Some(inner) => format!("Some.{}", Inner::to_nota(inner)),
             None => "None".to_owned(),
         }
     }
