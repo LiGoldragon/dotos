@@ -1389,7 +1389,7 @@ impl StructTrace {
                             block: &::nota::Block,
                         ) -> ::std::result::Result<::nota::DecodedWithSchema<Self>, ::nota::NotaDecodeError> {
                             let children = ::nota::NotaBlock::new(block).expect_children(
-                                ::nota::Delimiter::Parenthesis,
+                                ::nota::Delimiter::Brace,
                                 #type_name,
                                 #field_count,
                             )?;
@@ -1545,12 +1545,11 @@ impl EnumTrace {
                 ) -> ::std::result::Result<::nota::DecodedWithSchema<Self>, ::nota::NotaDecodeError> {
                     let expected = <Self as ::nota::NotaDecodeTraced>::instance_reference();
                     #atom_branch
-                    let children = ::nota::NotaBlock::new(block).expect_body(
-                        ::nota::Delimiter::Parenthesis,
-                        #enum_name,
-                    )?;
-                    let children = children.expect_fields(#enum_name, 2)?;
-                    let variant = children[0].demote_to_string().ok_or(::nota::NotaDecodeError::ExpectedAtom {
+                    let (head, payload) = block.as_application().ok_or(::nota::NotaDecodeError::ExpectedDelimited {
+                        type_name: #enum_name,
+                        delimiter: "unit-variant atom or Variant.payload application",
+                    })?;
+                    let variant = head.demote_to_string().ok_or(::nota::NotaDecodeError::ExpectedAtom {
                         type_name: "enum variant",
                     })?;
                     match variant {
@@ -1605,8 +1604,8 @@ impl<'variant> TracedPayloadVariant<'variant> {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
                     #tag => {
-                        let payload = <#field_type as ::nota::NotaDecodeTraced>::from_nota_block_traced(&children[1])?;
-                        let (payload_value, payload_schema) = payload.into_parts();
+                        let decoded_payload = <#field_type as ::nota::NotaDecodeTraced>::from_nota_block_traced(payload)?;
+                        let (payload_value, payload_schema) = decoded_payload.into_parts();
                         ::std::result::Result::Ok(::nota::DecodedWithSchema::new(
                             #enum_name::#variant_name(payload_value),
                             ::nota::InstanceSchema::new(

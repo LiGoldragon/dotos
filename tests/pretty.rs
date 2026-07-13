@@ -73,14 +73,14 @@ fn indentation_step_is_configurable() {
 fn pipe_text_bytes_survive_a_break_verbatim() {
     // A pipe-text leaf carries a raw newline. The layout must never indent
     // inside it, and the exact bytes must round-trip.
-    let source = "(Note [|first line
-second line|] tail)";
+    let source = "(Note (|first line
+second line|) tail)";
     let pretty = PrettyLayout::new(12, 2)
         .render_nota(source)
         .expect("valid nota");
     assert!(pretty.contains(
-        "[|first line
-second line|]"
+        "(|first line
+second line|)"
     ));
     assert_reparses_equal(source, &pretty);
 }

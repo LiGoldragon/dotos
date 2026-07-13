@@ -218,7 +218,12 @@ fn pipe_paren_multiline_string_round_trips_with_escapes() {
 /// then kind, then the parenthesised body.
 #[test]
 fn psyche_authored_newtype_sample_parses_with_intended_shape() {
-    let source = "Public.Newtype.(\n  CommitSequence\n  [ Literal.[rustfmt.skip]\n    Derive.[rkyv.[Archive Serialize Deserialize] Clone Debug PartialEq Eq] ]\n  Integer\n)";
+    let source = r#"Public.Newtype.(
+  CommitSequence
+  [ Literal.[rustfmt.skip]
+    Derive.[rkyv.[Archive Serialize Deserialize] Clone Debug PartialEq Eq] ]
+  Integer
+)"#;
     let document = Document::parse(source).expect("psyche sample parses");
     let block = document.root_object_at(0).expect("root");
 

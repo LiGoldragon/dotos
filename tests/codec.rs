@@ -9,7 +9,7 @@ use nota::{
 #[test]
 fn codec_decodes_and_encodes_scalars() {
     assert_eq!(
-        NotaSource::new("[schema owns strings]")
+        NotaSource::new("(schema owns strings)")
             .parse::<String>()
             .expect("string decodes"),
         "schema owns strings"
@@ -62,7 +62,7 @@ fn codec_decodes_and_encodes_scalars() {
 
     assert_eq!(
         "schema owns strings".to_owned().to_nota(),
-        "[schema owns strings]"
+        "(schema owns strings)"
     );
     assert_eq!(
         "schema@next;required*;a&b^2%>x<y:path/to"
@@ -77,13 +77,13 @@ fn codec_decodes_and_encodes_scalars() {
         "schema@next;required*;a&b^2%>x<y:path/to"
     );
     assert_eq!("100%".to_owned().to_nota(), "100%");
-    assert_eq!("alpha; beta".to_owned().to_nota(), "[alpha; beta]");
-    assert_eq!("alpha;;beta".to_owned().to_nota(), "[|alpha;;beta|]");
-    let bracket_safe = "text containing [brackets] and a closing pipe marker |]".to_owned();
+    assert_eq!("alpha; beta".to_owned().to_nota(), "(alpha; beta)");
+    assert_eq!("alpha;;beta".to_owned().to_nota(), "(|alpha;;beta|)");
+    let bracket_safe = "text containing [brackets] and a closing pipe marker |)".to_owned();
     let encoded = bracket_safe.to_nota();
     assert_eq!(
         encoded,
-        "[|text containing [brackets] and a closing pipe marker \\|]|]"
+        "(|text containing [brackets] and a closing pipe marker \\|)|)"
     );
     assert_eq!(
         NotaSource::new(&encoded)
@@ -95,7 +95,7 @@ fn codec_decodes_and_encodes_scalars() {
     let encoded = slash_safe.to_nota();
     assert_eq!(
         encoded,
-        "[|text containing [brackets] and a backslash \\\\|]"
+        "(|text containing [brackets] and a backslash \\\\|)"
     );
     assert_eq!(
         NotaSource::new(&encoded)
@@ -115,18 +115,18 @@ fn codec_decodes_and_encodes_scalars() {
 
 #[test]
 fn codec_rejects_brackets_around_bare_eligible_strings() {
-    let error = NotaSource::new("[schema]")
+    let error = NotaSource::new("(schema)")
         .parse::<String>()
-        .expect_err("redundant inline brackets reject");
+        .expect_err("redundant inline parentheses reject");
 
     assert!(
         error.to_string().contains("use schema"),
         "error was {error}"
     );
 
-    let error = NotaSource::new("[|schema|]")
+    let error = NotaSource::new("(|schema|)")
         .parse::<String>()
-        .expect_err("redundant pipe brackets reject");
+        .expect_err("redundant pipe parentheses reject");
 
     assert!(
         error.to_string().contains("use schema"),
@@ -198,11 +198,11 @@ fn codec_decodes_and_encodes_collection_values() {
     assert_eq!(vector, vec!["alpha", "beta", "gamma"]);
     assert_eq!(vector.to_nota(), "[alpha beta gamma]");
 
-    let option = NotaSource::new("(Some [cache entry])")
+    let option = NotaSource::new("Some.(cache entry)")
         .parse::<Option<String>>()
         .expect("option decodes");
     assert_eq!(option, Some("cache entry".to_owned()));
-    assert_eq!(option.to_nota(), "(Some [cache entry])");
+    assert_eq!(option.to_nota(), "Some.(cache entry)");
 
     let none = NotaSource::new("None")
         .parse::<Option<String>>()
@@ -241,23 +241,23 @@ fn codec_rejects_noncanonical_byte_sequence_hex() {
 
 #[test]
 fn codec_decodes_and_encodes_ordered_map_values() {
-    let map = NotaSource::new("{alpha.1 beta.2}")
+    let map = NotaSource::new("Map.(alpha.1 beta.2)")
         .parse::<BTreeMap<String, u64>>()
         .expect("map decodes");
 
     assert_eq!(map.get("alpha"), Some(&1));
     assert_eq!(map.get("beta"), Some(&2));
-    assert_eq!(map.to_nota(), "{alpha.1 beta.2}");
+    assert_eq!(map.to_nota(), "Map.(alpha.1 beta.2)");
 }
 
 #[test]
 fn codec_decodes_and_encodes_boxed_values_without_shape_noise() {
-    let boxed = NotaSource::new("[recursive reference]")
+    let boxed = NotaSource::new("(recursive reference)")
         .parse::<Box<String>>()
         .expect("boxed value decodes");
 
     assert_eq!(*boxed, "recursive reference");
-    assert_eq!(boxed.to_nota(), "[recursive reference]");
+    assert_eq!(boxed.to_nota(), "(recursive reference)");
 }
 
 #[test]

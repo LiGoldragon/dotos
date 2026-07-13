@@ -77,17 +77,24 @@ fn exposes_structural_candidates_without_content_classification() {
         "payload names are still plain PascalCase symbol candidates"
     );
 
-    // `42` and `7.5` are not read as numbers here: the parser records no
-    // content classification, so they are ordinary symbol-safe atoms whose
-    // numeric meaning is decided only at decode under an expected type. The
-    // period in `7.5` is ordinary atom text and never splits the atom.
+    // `42` is not read as a number here: the parser records no content
+    // classification, so it is an ordinary symbol-safe atom whose numeric
+    // meaning is decided only at decode under an expected type. `7.5` carries
+    // a period, which is a structural dot-application operator, so it parses as
+    // an application whose flat text a numeric decoder reconstructs — never a
+    // single atom.
     assert!(roots[6].qualifies_as_symbol());
     assert_eq!(roots[6].demote_to_string(), Some("42"));
     assert!(!roots[6].qualifies_as_pascal_case_symbol());
     assert!(!roots[6].qualifies_as_camel_case_symbol());
     assert!(!roots[6].qualifies_as_kebab_case_symbol());
-    assert!(roots[7].qualifies_as_symbol());
-    assert_eq!(roots[7].demote_to_string(), Some("7.5"));
+    assert!(
+        roots[7].is_application(),
+        "the period in 7.5 binds an application"
+    );
+    assert!(!roots[7].qualifies_as_symbol());
+    assert_eq!(roots[7].demote_to_string(), None);
+    assert_eq!(roots[7].dotted_text(), Some("7.5".to_owned()));
 
     for root in &roots[8..] {
         assert!(root.qualifies_as_symbol());
@@ -107,8 +114,8 @@ fn double_semicolon_is_comment_and_single_semicolon_is_atom_text() {
 }
 
 #[test]
-fn pipe_text_is_square_bracket_safe_and_not_recursively_parsed() {
-    let source = "[|macro body with ] and \" and apostrophe's text|]";
+fn pipe_text_is_delimiter_safe_and_not_recursively_parsed() {
+    let source = "(|macro body with ] and \" and apostrophe's text|)";
     let document = Document::parse(source).expect("valid nota");
     let root = document.root_object_at(0).expect("root");
 
@@ -122,14 +129,14 @@ fn pipe_text_is_square_bracket_safe_and_not_recursively_parsed() {
 
 #[test]
 fn pipe_text_escapes_single_pipe_close_marker() {
-    let source = "[|macro body can contain \\|] without ending|]";
+    let source = "(|macro body can contain \\|) without ending|)";
     let document = Document::parse(source).expect("valid nota");
     let root = document.root_object_at(0).expect("root");
 
     assert!(root.is_pipe_text());
     assert_eq!(
         root.demote_to_string(),
-        Some("macro body can contain |] without ending")
+        Some("macro body can contain |) without ending")
     );
     assert_eq!(root.reemit(document.source()), source);
 }
