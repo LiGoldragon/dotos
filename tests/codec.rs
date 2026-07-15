@@ -125,7 +125,10 @@ fn codec_rejoins_dotted_strings_under_expected_string_type() {
     for (source, expected) in [
         ("file.txt", "file.txt"),
         ("Foo.bar", "Foo.bar"),
-        ("nix.prometheus.goldragon.criome", "nix.prometheus.goldragon.criome"),
+        (
+            "nix.prometheus.goldragon.criome",
+            "nix.prometheus.goldragon.criome",
+        ),
     ] {
         assert_eq!(
             NotaSource::new(source)
@@ -166,7 +169,10 @@ fn codec_rejoins_dotted_strings_under_expected_string_type() {
     }
 
     // A string with spaces still takes the parenthesis form.
-    assert_eq!("words with spaces".to_owned().to_nota(), "(words with spaces)");
+    assert_eq!(
+        "words with spaces".to_owned().to_nota(),
+        "(words with spaces)"
+    );
     // A multi-line string still takes the literal-preserving pipe form.
     let multiline = "line one\nline two".to_owned().to_nota();
     assert!(
