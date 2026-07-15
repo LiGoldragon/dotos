@@ -8,6 +8,16 @@ use nota::{
 #[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, Ord, PartialEq, PartialOrd)]
 struct Topic(String);
 
+/// A two-deep newtype chain that ultimately resolves to a `String` inner type.
+/// Each derived newtype layer delegates straight to its inner type's codec, so
+/// the whole chain accepts and re-emits whatever an expected `String` does — a
+/// dotted bare block included, through arbitrarily many wrappers.
+#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+struct HostLabel(String);
+
+#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+struct HostName(HostLabel);
+
 #[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
 struct Entry {
     topic: Topic,
@@ -82,6 +92,19 @@ fn derive_reads_and_writes_record_shapes() {
         }
     );
     assert_eq!(entry.to_nota(), "{schema (derive works) 7}");
+}
+
+#[test]
+fn derive_newtype_chain_over_string_accepts_and_rewrites_dotted_bare_content() {
+    let host = NotaSource::new("nix.prometheus.goldragon.criome")
+        .parse::<HostName>()
+        .expect("two-deep newtype chain decodes a dotted bare string");
+
+    assert_eq!(
+        host,
+        HostName(HostLabel(String::from("nix.prometheus.goldragon.criome")))
+    );
+    assert_eq!(host.to_nota(), "nix.prometheus.goldragon.criome");
 }
 
 #[test]

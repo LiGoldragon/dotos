@@ -117,15 +117,16 @@ fn float_literal_round_trips_through_its_structural_period() {
     );
 }
 
-/// Under the reshuffle a canonical string is a bare atom, a string carrying a
-/// space is parenthesized, and a string carrying a structural character — a
-/// period, a bracket, or a comment marker — takes the literal-preserving
-/// `(| … |)` multiline form.
+/// Under the reshuffle a canonical string is a bare atom — a period-joined chain
+/// of bare atoms included, since an expected `String` reclaims the dotted text —
+/// a string carrying a space is parenthesized, and a string carrying a genuine
+/// structural character — a bracket, a comment marker, or a newline — takes the
+/// literal-preserving `(| … |)` multiline form.
 #[test]
 fn strings_reshuffle_to_bare_paren_and_pipe_paren_forms() {
     assert_eq!("schema".to_owned().to_nota(), "schema");
     assert_eq!("alpha beta".to_owned().to_nota(), "(alpha beta)");
-    assert_eq!("a.b".to_owned().to_nota(), "(|a.b|)");
+    assert_eq!("a.b".to_owned().to_nota(), "a.b");
     assert_eq!("has (paren)".to_owned().to_nota(), "(|has (paren)|)");
     assert_eq!("alpha;;beta".to_owned().to_nota(), "(|alpha;;beta|)");
 

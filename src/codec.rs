@@ -374,24 +374,38 @@ impl<'block> NotaBlock<'block> {
     }
 
     pub fn parse_string(&self) -> Result<String, NotaDecodeError> {
-        if let Some(text) = self.block.demote_to_string() {
-            if self.block.is_pipe_text() {
-                NotaString::new(text).reject_redundant_delimiter()?;
-            }
+        // Pipe text carries a literal, but a pipe wrapper around content that a
+        // simpler canonical form could hold is non-canonical and rejected.
+        if self.block.is_pipe_text() {
+            let text = self
+                .block
+                .demote_to_string()
+                .expect("pipe text demotes to its literal");
+            NotaString::new(text).reject_redundant_delimiter(StringForm::PipeText)?;
             return Ok(text.to_owned());
         }
+        // A bare atom or a dotted chain of atoms is the string's flat text: an
+        // expected `String` reclaims the text the structural period split into a
+        // raw dot-application, exactly as the numeric readers reclaim a
+        // fractional literal. The rejoin is case-blind — `file.txt`, `Foo.bar`,
+        // and a multi-dot host such as `nix.prometheus.goldragon.criome` all
+        // rejoin to their bare content regardless of atom case.
+        if let Some(text) = self.block.dotted_text() {
+            return Ok(text);
+        }
+        // A parenthesis holds space-joined children, each itself a string.
         if let Some(root_objects) = self.block.as_delimited(Delimiter::Parenthesis) {
             let text = root_objects
                 .iter()
                 .map(|block| NotaBlock::new(block).parse_string())
                 .collect::<Result<Vec<_>, _>>()
                 .map(|parts| parts.join(" "))?;
-            NotaString::new(&text).reject_redundant_delimiter()?;
+            NotaString::new(&text).reject_redundant_delimiter(StringForm::Parenthesis)?;
             return Ok(text);
         }
         Err(NotaDecodeError::ExpectedDelimited {
             type_name: "String",
-            delimiter: "string atom or parenthesis",
+            delimiter: "string atom, dotted application, or parenthesis",
         })
     }
 
@@ -477,6 +491,18 @@ impl<'block> NotaBlock<'block> {
     }
 }
 
+/// The one canonical NOTA surface form a string's content takes. The forms are
+/// mutually exclusive by construction — [`NotaString::canonical_form`] picks the
+/// least-delimited form that carries the content faithfully — so both the
+/// encoder and the redundant-delimiter check read a single classification rather
+/// than scattering per-character conditionals.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StringForm {
+    BareDotted,
+    Parenthesis,
+    PipeText,
+}
+
 pub struct NotaString<'value> {
     value: &'value str,
 }
@@ -487,39 +513,80 @@ impl<'value> NotaString<'value> {
     }
 
     pub fn format(&self) -> String {
-        if self.qualifies_as_bare_string_atom() {
-            return self.value.to_owned();
+        match self.canonical_form() {
+            StringForm::BareDotted => self.value.to_owned(),
+            StringForm::Parenthesis => format!("({})", self.value),
+            StringForm::PipeText => format!("(|{}|)", self.escape_pipe_text()),
         }
-        // A period is a structural dot-application operator, so a string whose
-        // content carries one cannot ride inside the space-joined `( … )` form
-        // (its children would be parsed as applications); it must use the
-        // literal-preserving multiline `( | … | )` form.
+    }
+
+    /// The single canonical NOTA form for this string's content. The three forms
+    /// are ordered by how little delimiter they spend, and the first one that can
+    /// carry the content faithfully wins, so each form narrows to its honest role:
+    ///
+    /// - [`StringForm::BareDotted`] — content that is a period-joined chain of
+    ///   bare atoms, so the raw parser rebuilds a dot-application whose flat
+    ///   dotted text is exactly the content: `schema`, `file.txt`,
+    ///   `nix.prometheus.goldragon.criome`. A period is a structural operator at
+    ///   the raw layer, but an expected `String` reclaims the split text, so a
+    ///   period-bearing string no longer needs an escape.
+    /// - [`StringForm::Parenthesis`] — content that is single-space-separated
+    ///   words, each itself bare-dotted, so the space-joined `( … )` form
+    ///   rebuilds it: `alpha beta`, `version 1.2`.
+    /// - [`StringForm::PipeText`] — everything else: delimiter glyphs, newlines
+    ///   and indentation, comment markers, pipe-close markers, irregular
+    ///   whitespace, or the empty string. Only the literal-preserving
+    ///   `( | … | )` form carries these, with close markers escaped.
+    fn canonical_form(&self) -> StringForm {
+        if self.qualifies_as_bare_dotted_string() {
+            StringForm::BareDotted
+        } else if self.qualifies_as_parenthesized_string() {
+            StringForm::Parenthesis
+        } else {
+            StringForm::PipeText
+        }
+    }
+
+    /// Whether the content is a non-empty period-joined chain of bare atoms. Each
+    /// period-separated segment must be a non-empty run of bare-atom characters,
+    /// so the raw parser rebuilds a dot-application (or a lone atom) whose flat
+    /// dotted text equals the content. A comment marker breaks atom scanning, so
+    /// content carrying `;;` is never bare.
+    fn qualifies_as_bare_dotted_string(&self) -> bool {
+        if self.value.is_empty() || self.value.contains(";;") {
+            return false;
+        }
+        self.value.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|character| AtomCharacter::new(character).is_bare_string())
+        })
+    }
+
+    /// Whether the content is single-space-separated words that each qualify as
+    /// bare-dotted. The space-joined `( … )` form skips whitespace adjacent to
+    /// object boundaries, so only single ASCII spaces between non-empty words
+    /// survive a round trip: a leading or trailing space, a doubled space, or any
+    /// non-space whitespace forces the literal-preserving pipe form instead.
+    fn qualifies_as_parenthesized_string(&self) -> bool {
+        if !self.value.contains(' ') {
+            return false;
+        }
         if self
             .value
             .chars()
-            .any(|character| matches!(character, '[' | ']' | '(' | ')' | '{' | '}' | '.' | '\n'))
-            || self.value.contains(";;")
+            .any(|character| character.is_whitespace() && character != ' ')
         {
-            format!("(|{}|)", self.escape_pipe_text())
-        } else {
-            format!("({})", self.value)
+            return false;
         }
+        self.value
+            .split(' ')
+            .all(|word| NotaString::new(word).qualifies_as_bare_dotted_string())
     }
 
-    fn qualifies_as_bare_string_atom(&self) -> bool {
-        // Every delimiter and the period already disqualify a character from a
-        // bare atom (`is_bare_string`), so no additional close-sequence guard is
-        // needed: a bare string cannot contain `(`, `)`, or `.` at all.
-        !self.value.is_empty()
-            && !self.value.contains(";;")
-            && self
-                .value
-                .chars()
-                .all(|character| AtomCharacter::new(character).is_bare_string())
-    }
-
-    fn reject_redundant_delimiter(&self) -> Result<(), NotaDecodeError> {
-        if self.qualifies_as_bare_string_atom() {
+    fn reject_redundant_delimiter(&self, used: StringForm) -> Result<(), NotaDecodeError> {
+        if self.canonical_form() != used {
             return Err(NotaDecodeError::NonCanonicalStringDelimiter {
                 value: self.value.to_owned(),
                 canonical: self.format(),

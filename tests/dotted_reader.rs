@@ -73,16 +73,17 @@ fn a_leading_atom_without_a_period_is_not_a_dotted_entry() {
 }
 
 #[test]
-fn map_value_carrying_dots_uses_the_pipe_string_form_and_round_trips() {
-    // A period is a structural operator, so a string value that carries dots
-    // is no longer bare: it takes the literal-preserving `(| … |)` form, and
-    // the map is the `Map.( key.Value … )` surface.
-    let map = NotaSource::new("Map.(path.(|a.b.c|))")
+fn map_value_carrying_dots_rejoins_bare_and_round_trips() {
+    // A period is a structural operator at the raw layer, but the expected
+    // `String` value reclaims the dotted text, so a dotted string value stays
+    // bare: the entry is `path.a.b.c` and the map is the plain
+    // `Map.( key.Value … )` surface with no pipe escape.
+    let map = NotaSource::new("Map.(path.a.b.c)")
         .parse::<BTreeMap<String, String>>()
         .expect("map decodes");
 
     assert_eq!(map.get("path"), Some(&String::from("a.b.c")));
-    assert_eq!(map.to_nota(), "Map.(path.(|a.b.c|))");
+    assert_eq!(map.to_nota(), "Map.(path.a.b.c)");
 }
 
 /// The block-level reader over an inline-value atom and the string-level reader

@@ -113,6 +113,96 @@ fn codec_decodes_and_encodes_scalars() {
     assert_eq!(false.to_nota(), "False");
 }
 
+/// A period-bearing string is reclaimed by the expected `String` boundary just
+/// as a float is reclaimed by an expected `Float`: a dotted raw application
+/// rejoins into the bare string content, case-blind and through any depth of
+/// dots. Bare is the canonical form for such content, so encode emits it bare
+/// and a redundant pipe wrapper is rejected. Spaces still take `( … )` and
+/// genuinely structural content still takes `(| … |)`.
+#[test]
+fn codec_rejoins_dotted_strings_under_expected_string_type() {
+    // Decode: a dotted bare application rejoins into flat string content.
+    for (source, expected) in [
+        ("file.txt", "file.txt"),
+        ("Foo.bar", "Foo.bar"),
+        ("nix.prometheus.goldragon.criome", "nix.prometheus.goldragon.criome"),
+    ] {
+        assert_eq!(
+            NotaSource::new(source)
+                .parse::<String>()
+                .unwrap_or_else(|error| panic!("{source:?} decodes: {error}")),
+            expected,
+            "dotted string decode for {source:?}"
+        );
+    }
+
+    // Encode: period-joined bare-atom content emits bare, with no pipe escape.
+    assert_eq!("file.txt".to_owned().to_nota(), "file.txt");
+    assert_eq!("Foo.bar".to_owned().to_nota(), "Foo.bar");
+    assert_eq!(
+        "nix.prometheus.goldragon.criome".to_owned().to_nota(),
+        "nix.prometheus.goldragon.criome"
+    );
+
+    // Round trip (decode ∘ encode) for every canonical class: bare-dotted,
+    // space-separated parenthesis, and structural pipe text.
+    for original in [
+        "file.txt",
+        "Foo.bar",
+        "nix.prometheus.goldragon.criome",
+        "words with spaces",
+        "version 1.2",
+        "line one\nline two",
+        "has (paren) and .dot",
+    ] {
+        let encoded = original.to_owned().to_nota();
+        assert_eq!(
+            NotaSource::new(&encoded)
+                .parse::<String>()
+                .unwrap_or_else(|error| panic!("{original:?} → {encoded:?} decodes: {error}")),
+            original,
+            "round trip for {original:?}"
+        );
+    }
+
+    // A string with spaces still takes the parenthesis form.
+    assert_eq!("words with spaces".to_owned().to_nota(), "(words with spaces)");
+    // A multi-line string still takes the literal-preserving pipe form.
+    let multiline = "line one\nline two".to_owned().to_nota();
+    assert!(
+        multiline.starts_with("(|") && multiline.ends_with("|)"),
+        "multiline string takes pipe form, was {multiline}"
+    );
+
+    // Round trip (encode ∘ decode) on canonical text: canonical source decodes
+    // and re-encodes to the identical bytes.
+    for canonical in [
+        "file.txt",
+        "Foo.bar",
+        "nix.prometheus.goldragon.criome",
+        "(words with spaces)",
+        "(version 1.2)",
+    ] {
+        let value = NotaSource::new(canonical)
+            .parse::<String>()
+            .unwrap_or_else(|error| panic!("{canonical:?} decodes: {error}"));
+        assert_eq!(
+            value.to_nota(),
+            canonical,
+            "canonical text is an encode fixpoint for {canonical:?}"
+        );
+    }
+
+    // A redundant pipe wrapper around bare-dotted content is non-canonical.
+    let error = NotaSource::new("(|file.txt|)")
+        .parse::<String>()
+        .expect_err("pipe wrapper around dotted-bare content rejects");
+    assert!(
+        error.to_string().contains("use file.txt"),
+        "error was {error}"
+    );
+}
+
 #[test]
 fn codec_rejects_brackets_around_bare_eligible_strings() {
     let error = NotaSource::new("(schema)")
