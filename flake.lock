@@ -123,11 +123,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1781802930,
-        "narHash": "sha256-nkqJGXvwuG9aAUAuStsl/7OXoo9g7CUsKDqtzzwKAfc=",
+        "lastModified": 1784198551,
+        "narHash": "sha256-O54EieARm8wHtmnoYlb6klVmyQplNF4NzEdTdjVt1Mc=",
         "owner": "LiGoldragon",
         "repo": "rust-build",
-        "rev": "d97af86e37c8f53d5d1c71b6002d426e90814f8b",
+        "rev": "b129abcbbe284902f965773471b3912058b4f1b4",
         "type": "github"
       },
       "original": {
