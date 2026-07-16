@@ -15,7 +15,7 @@ fn uncapitalized_reads_inline_value_and_consumes_one_block() {
 }
 
 #[test]
-fn uncapitalized_reads_following_block_value_and_consumes_two_blocks() {
+fn uncapitalized_reads_a_delimited_payload_value_from_one_application() {
     let document = Document::parse("alpha.(inner value)").expect("valid nota");
     let entry = DottedExpectation::Uncapitalized
         .read_entry(document.root_objects())
@@ -24,7 +24,10 @@ fn uncapitalized_reads_following_block_value_and_consumes_two_blocks() {
     assert_eq!(entry.key().demote_to_string(), Some("alpha"));
     assert!(entry.value().is_parenthesis());
     assert_eq!(entry.value().holds_root_objects(), 2);
-    assert_eq!(entry.consumed(), 2);
+    // The raw parser binds the period, so a dotted pair is always one
+    // application block: exactly one block is consumed regardless of whether
+    // the value is inline or delimited.
+    assert_eq!(entry.consumed(), 1);
 }
 
 #[test]
@@ -70,13 +73,17 @@ fn a_leading_atom_without_a_period_is_not_a_dotted_entry() {
 }
 
 #[test]
-fn map_value_may_itself_be_dotted_and_round_trips_exactly() {
-    let map = NotaSource::new("{path.a.b.c}")
+fn map_value_carrying_dots_rejoins_bare_and_round_trips() {
+    // A period is a structural operator at the raw layer, but the expected
+    // `String` value reclaims the dotted text, so a dotted string value stays
+    // bare: the entry is `path.a.b.c` and the map is the plain
+    // `Map.( key.Value … )` surface with no pipe escape.
+    let map = NotaSource::new("Map.(path.a.b.c)")
         .parse::<BTreeMap<String, String>>()
         .expect("map decodes");
 
     assert_eq!(map.get("path"), Some(&String::from("a.b.c")));
-    assert_eq!(map.to_nota(), "{path.a.b.c}");
+    assert_eq!(map.to_nota(), "Map.(path.a.b.c)");
 }
 
 /// The block-level reader over an inline-value atom and the string-level reader
@@ -98,7 +105,13 @@ fn string_level_split_matches_the_block_level_reader() {
             .expect("string-level dotted entry reads");
 
         assert_eq!(block_entry.key().demote_to_string(), Some(string_key));
-        assert_eq!(block_entry.value().demote_to_string(), Some(string_value));
+        // The block-level value of a dotted chain is a nested application, so
+        // its flat form is the reconstruction that matches the string-level
+        // split's whole remainder.
+        assert_eq!(
+            block_entry.value().dotted_text(),
+            Some(string_value.to_owned())
+        );
         assert_eq!(block_entry.consumed(), 1);
     }
 }

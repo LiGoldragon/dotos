@@ -120,11 +120,19 @@ tagged or data-carrying macro variant.
 - `NotaSource`, `NotaBlock`, `NotaString`, and `NotaCollection` are the
   data-bearing codec helpers. They own single-root parsing, delimiter
   expectation, direct body parsing, string formatting, and collection value
-  shapes. `NotaString` renders broad bare-safe strings as bare atoms, inline
-  brackets for whitespace-delimited strings, and pipe text for strings carrying
-  structural delimiters, `;;`, pipe-close markers, or newlines. Typed `String`
-  decoding rejects bracketed or pipe-delimited strings when the decoded text can
-  be written as a bare atom. Delimited NOTA strings come exclusively from the two
+  shapes. `NotaString` picks the least-delimited canonical form its content can
+  carry faithfully: a period-joined chain of bare atoms renders bare (`file.txt`,
+  `nix.prometheus.goldragon.criome`), single-space-separated bare-atom words
+  render as the space-joined `( … )` form, and content with structural
+  delimiters, `;;`, pipe-close markers, newlines, or irregular whitespace takes
+  the literal-preserving `(| … |)` pipe form. A period is a structural dot
+  operator at the raw layer, but an expected `String` reclaims the text it split:
+  a dotted raw application rejoins into the bare string content — the exact
+  parallel of a float reconstructed from its fractional period — so a
+  period-bearing string needs no escape and the rejoin is case-blind. Typed
+  `String` decoding rejects a bracketed or pipe-delimited string whenever the
+  decoded text has a strictly less-delimited canonical form. Delimited NOTA
+  strings come exclusively from the two
   bracket forms (Spirit `vfjw`, `f8m3`): the canonical inline `[text]`
   square-bracket string for single-line strings (Spirit `7rrs`), and the
   four-character bracket-pipe block form for pretty indented multiline string
@@ -214,11 +222,13 @@ parser classifies no content anywhere.
 
 - When the expected position can carry a dotted prefix, the reader looks for a
   top-level dot in the leading atom and splits the prefix from the remainder.
-- In every other mode — expected `String` above all — a period is an ordinary
-  atom character and no split occurs.
-- The same text splits or does not split based only on the expected type at that
-  position, so no value's content can ever change its parse shape. This is what
-  "atomically composable and predictable" means for this mechanism.
+- In every other mode — expected `String` above all — no prefix is split off.
+  The raw layer still binds a period into a dot-application, but an expected
+  `String` rejoins that whole application into its flat dotted text instead of
+  splitting a key from it, so the entire dotted chain is the string's content.
+- The same text splits, rejoins, or stays a lone atom based only on the expected
+  type at that position, so no value's content can ever change its parse shape.
+  This is what "atomically composable and predictable" means for this mechanism.
 
 There are exactly two dotted-prefix expectation kinds:
 

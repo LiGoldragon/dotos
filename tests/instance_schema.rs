@@ -156,9 +156,9 @@ fn empty_vector_still_names_its_element_type() {
 
 #[test]
 fn domain_path_traces_expected_types_down_the_taxonomy() {
-    // value: (Technology (Software (Programming CodeGeneration)))
+    // value: Technology.Software.Programming.CodeGeneration
     // expected trace: Domain -> Technology -> Software -> Programming
-    let (value, schema) = trace::<Domain>("(Technology (Software (Programming CodeGeneration)))");
+    let (value, schema) = trace::<Domain>("Technology.Software.Programming.CodeGeneration");
     assert_eq!(
         value,
         Domain::Technology(Technology::Software(Software::Programming(
@@ -189,7 +189,7 @@ fn enum_payload(schema: &InstanceSchema) -> &InstanceSchema {
 
 #[test]
 fn entry_struct_records_each_field_type_in_declared_order() {
-    let source = "([(Technology (Software (Programming CodeGeneration)))] Decision [a description] High Low Zero [spirit])";
+    let source = "{[Technology.Software.Programming.CodeGeneration] Decision (a description) High Low Zero [spirit]}";
     let (value, schema) = trace::<Entry>(source);
     assert_eq!(value.kind, Kind::Decision);
     assert_eq!(value.certainty, Certainty(Magnitude::High));
@@ -226,8 +226,8 @@ fn entry_struct_records_each_field_type_in_declared_order() {
 
 #[test]
 fn root_input_records_enum_name_and_descends_through_transparent_wrappers() {
-    // value: (Record ( (entry-fields) )) — Input::Record(Record(RecordRequest { entry })).
-    let source = "(Record (([(Technology (Software (Programming CodeGeneration)))] Decision [a description] High Low Zero [spirit])))";
+    // value: Record.{{ entry-fields }} — Input::Record(Record(RecordRequest { entry })).
+    let source = "Record.{{[Technology.Software.Programming.CodeGeneration] Decision (a description) High Low Zero [spirit]}}";
     let (value, schema) = trace::<Input>(source);
     assert!(matches!(value, Input::Record(_)));
 
@@ -261,7 +261,7 @@ fn unit_root_variant_is_a_scalar_terminal() {
 #[test]
 fn traced_value_matches_ordinary_decode() {
     // The traced decoder must agree with the ordinary NotaDecode on the value.
-    let source = "(Technology (Software Theory))";
+    let source = "Technology.Software.Theory";
     let traced = {
         let block = NotaSource::new(source).parse_root().expect("parse root");
         Domain::from_nota_block_traced(&block)

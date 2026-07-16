@@ -9,7 +9,7 @@ use nota::{
 #[test]
 fn codec_decodes_and_encodes_scalars() {
     assert_eq!(
-        NotaSource::new("[schema owns strings]")
+        NotaSource::new("(schema owns strings)")
             .parse::<String>()
             .expect("string decodes"),
         "schema owns strings"
@@ -62,7 +62,7 @@ fn codec_decodes_and_encodes_scalars() {
 
     assert_eq!(
         "schema owns strings".to_owned().to_nota(),
-        "[schema owns strings]"
+        "(schema owns strings)"
     );
     assert_eq!(
         "schema@next;required*;a&b^2%>x<y:path/to"
@@ -77,13 +77,13 @@ fn codec_decodes_and_encodes_scalars() {
         "schema@next;required*;a&b^2%>x<y:path/to"
     );
     assert_eq!("100%".to_owned().to_nota(), "100%");
-    assert_eq!("alpha; beta".to_owned().to_nota(), "[alpha; beta]");
-    assert_eq!("alpha;;beta".to_owned().to_nota(), "[|alpha;;beta|]");
-    let bracket_safe = "text containing [brackets] and a closing pipe marker |]".to_owned();
+    assert_eq!("alpha; beta".to_owned().to_nota(), "(alpha; beta)");
+    assert_eq!("alpha;;beta".to_owned().to_nota(), "(|alpha;;beta|)");
+    let bracket_safe = "text containing [brackets] and a closing pipe marker |)".to_owned();
     let encoded = bracket_safe.to_nota();
     assert_eq!(
         encoded,
-        "[|text containing [brackets] and a closing pipe marker \\|]|]"
+        "(|text containing [brackets] and a closing pipe marker \\|)|)"
     );
     assert_eq!(
         NotaSource::new(&encoded)
@@ -95,7 +95,7 @@ fn codec_decodes_and_encodes_scalars() {
     let encoded = slash_safe.to_nota();
     assert_eq!(
         encoded,
-        "[|text containing [brackets] and a backslash \\\\|]"
+        "(|text containing [brackets] and a backslash \\\\|)"
     );
     assert_eq!(
         NotaSource::new(&encoded)
@@ -113,20 +113,116 @@ fn codec_decodes_and_encodes_scalars() {
     assert_eq!(false.to_nota(), "False");
 }
 
+/// A period-bearing string is reclaimed by the expected `String` boundary just
+/// as a float is reclaimed by an expected `Float`: a dotted raw application
+/// rejoins into the bare string content, case-blind and through any depth of
+/// dots. Bare is the canonical form for such content, so encode emits it bare
+/// and a redundant pipe wrapper is rejected. Spaces still take `( … )` and
+/// genuinely structural content still takes `(| … |)`.
+#[test]
+fn codec_rejoins_dotted_strings_under_expected_string_type() {
+    // Decode: a dotted bare application rejoins into flat string content.
+    for (source, expected) in [
+        ("file.txt", "file.txt"),
+        ("Foo.bar", "Foo.bar"),
+        (
+            "nix.prometheus.goldragon.criome",
+            "nix.prometheus.goldragon.criome",
+        ),
+    ] {
+        assert_eq!(
+            NotaSource::new(source)
+                .parse::<String>()
+                .unwrap_or_else(|error| panic!("{source:?} decodes: {error}")),
+            expected,
+            "dotted string decode for {source:?}"
+        );
+    }
+
+    // Encode: period-joined bare-atom content emits bare, with no pipe escape.
+    assert_eq!("file.txt".to_owned().to_nota(), "file.txt");
+    assert_eq!("Foo.bar".to_owned().to_nota(), "Foo.bar");
+    assert_eq!(
+        "nix.prometheus.goldragon.criome".to_owned().to_nota(),
+        "nix.prometheus.goldragon.criome"
+    );
+
+    // Round trip (decode ∘ encode) for every canonical class: bare-dotted,
+    // space-separated parenthesis, and structural pipe text.
+    for original in [
+        "file.txt",
+        "Foo.bar",
+        "nix.prometheus.goldragon.criome",
+        "words with spaces",
+        "version 1.2",
+        "line one\nline two",
+        "has (paren) and .dot",
+    ] {
+        let encoded = original.to_owned().to_nota();
+        assert_eq!(
+            NotaSource::new(&encoded)
+                .parse::<String>()
+                .unwrap_or_else(|error| panic!("{original:?} → {encoded:?} decodes: {error}")),
+            original,
+            "round trip for {original:?}"
+        );
+    }
+
+    // A string with spaces still takes the parenthesis form.
+    assert_eq!(
+        "words with spaces".to_owned().to_nota(),
+        "(words with spaces)"
+    );
+    // A multi-line string still takes the literal-preserving pipe form.
+    let multiline = "line one\nline two".to_owned().to_nota();
+    assert!(
+        multiline.starts_with("(|") && multiline.ends_with("|)"),
+        "multiline string takes pipe form, was {multiline}"
+    );
+
+    // Round trip (encode ∘ decode) on canonical text: canonical source decodes
+    // and re-encodes to the identical bytes.
+    for canonical in [
+        "file.txt",
+        "Foo.bar",
+        "nix.prometheus.goldragon.criome",
+        "(words with spaces)",
+        "(version 1.2)",
+    ] {
+        let value = NotaSource::new(canonical)
+            .parse::<String>()
+            .unwrap_or_else(|error| panic!("{canonical:?} decodes: {error}"));
+        assert_eq!(
+            value.to_nota(),
+            canonical,
+            "canonical text is an encode fixpoint for {canonical:?}"
+        );
+    }
+
+    // A redundant pipe wrapper around bare-dotted content is non-canonical.
+    let error = NotaSource::new("(|file.txt|)")
+        .parse::<String>()
+        .expect_err("pipe wrapper around dotted-bare content rejects");
+    assert!(
+        error.to_string().contains("use file.txt"),
+        "error was {error}"
+    );
+}
+
 #[test]
 fn codec_rejects_brackets_around_bare_eligible_strings() {
-    let error = NotaSource::new("[schema]")
+    let error = NotaSource::new("(schema)")
         .parse::<String>()
-        .expect_err("redundant inline brackets reject");
+        .expect_err("redundant inline parentheses reject");
 
     assert!(
         error.to_string().contains("use schema"),
         "error was {error}"
     );
 
-    let error = NotaSource::new("[|schema|]")
+    let error = NotaSource::new("(|schema|)")
         .parse::<String>()
-        .expect_err("redundant pipe brackets reject");
+        .expect_err("redundant pipe parentheses reject");
 
     assert!(
         error.to_string().contains("use schema"),
@@ -198,11 +294,11 @@ fn codec_decodes_and_encodes_collection_values() {
     assert_eq!(vector, vec!["alpha", "beta", "gamma"]);
     assert_eq!(vector.to_nota(), "[alpha beta gamma]");
 
-    let option = NotaSource::new("(Some [cache entry])")
+    let option = NotaSource::new("Some.(cache entry)")
         .parse::<Option<String>>()
         .expect("option decodes");
     assert_eq!(option, Some("cache entry".to_owned()));
-    assert_eq!(option.to_nota(), "(Some [cache entry])");
+    assert_eq!(option.to_nota(), "Some.(cache entry)");
 
     let none = NotaSource::new("None")
         .parse::<Option<String>>()
@@ -241,23 +337,23 @@ fn codec_rejects_noncanonical_byte_sequence_hex() {
 
 #[test]
 fn codec_decodes_and_encodes_ordered_map_values() {
-    let map = NotaSource::new("{alpha.1 beta.2}")
+    let map = NotaSource::new("Map.(alpha.1 beta.2)")
         .parse::<BTreeMap<String, u64>>()
         .expect("map decodes");
 
     assert_eq!(map.get("alpha"), Some(&1));
     assert_eq!(map.get("beta"), Some(&2));
-    assert_eq!(map.to_nota(), "{alpha.1 beta.2}");
+    assert_eq!(map.to_nota(), "Map.(alpha.1 beta.2)");
 }
 
 #[test]
 fn codec_decodes_and_encodes_boxed_values_without_shape_noise() {
-    let boxed = NotaSource::new("[recursive reference]")
+    let boxed = NotaSource::new("(recursive reference)")
         .parse::<Box<String>>()
         .expect("boxed value decodes");
 
     assert_eq!(*boxed, "recursive reference");
-    assert_eq!(boxed.to_nota(), "[recursive reference]");
+    assert_eq!(boxed.to_nota(), "(recursive reference)");
 }
 
 #[test]

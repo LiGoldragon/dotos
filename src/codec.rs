@@ -374,34 +374,46 @@ impl<'block> NotaBlock<'block> {
     }
 
     pub fn parse_string(&self) -> Result<String, NotaDecodeError> {
-        if let Some(text) = self.block.demote_to_string() {
-            if self.block.is_pipe_text() {
-                NotaString::new(text).reject_redundant_delimiter()?;
-            }
+        // Pipe text carries a literal, but a pipe wrapper around content that a
+        // simpler canonical form could hold is non-canonical and rejected.
+        if self.block.is_pipe_text() {
+            let text = self
+                .block
+                .demote_to_string()
+                .expect("pipe text demotes to its literal");
+            NotaString::new(text).reject_redundant_delimiter(StringForm::PipeText)?;
             return Ok(text.to_owned());
         }
-        if let Some(root_objects) = self.block.as_delimited(Delimiter::SquareBracket) {
+        // A bare atom or a dotted chain of atoms is the string's flat text: an
+        // expected `String` reclaims the text the structural period split into a
+        // raw dot-application, exactly as the numeric readers reclaim a
+        // fractional literal. The rejoin is case-blind — `file.txt`, `Foo.bar`,
+        // and a multi-dot host such as `nix.prometheus.goldragon.criome` all
+        // rejoin to their bare content regardless of atom case.
+        if let Some(text) = self.block.dotted_text() {
+            return Ok(text);
+        }
+        // A parenthesis holds space-joined children, each itself a string.
+        if let Some(root_objects) = self.block.as_delimited(Delimiter::Parenthesis) {
             let text = root_objects
                 .iter()
                 .map(|block| NotaBlock::new(block).parse_string())
                 .collect::<Result<Vec<_>, _>>()
                 .map(|parts| parts.join(" "))?;
-            NotaString::new(&text).reject_redundant_delimiter()?;
+            NotaString::new(&text).reject_redundant_delimiter(StringForm::Parenthesis)?;
             return Ok(text);
         }
         Err(NotaDecodeError::ExpectedDelimited {
             type_name: "String",
-            delimiter: "string atom or square bracket",
+            delimiter: "string atom, dotted application, or parenthesis",
         })
     }
 
     pub fn parse_integer(&self) -> Result<u64, NotaDecodeError> {
-        let value = self.parse_integer_text("Integer")?;
+        let value = self.parse_numeric_text("Integer")?;
         value
             .parse::<u64>()
-            .map_err(|_| NotaDecodeError::InvalidInteger {
-                value: value.to_owned(),
-            })
+            .map_err(|_| NotaDecodeError::InvalidInteger { value })
     }
 
     pub fn parse_u16(&self) -> Result<u16, NotaDecodeError> {
@@ -426,12 +438,10 @@ impl<'block> NotaBlock<'block> {
     }
 
     pub fn parse_signed_integer(&self) -> Result<i64, NotaDecodeError> {
-        let value = self.parse_integer_text("SignedInteger")?;
+        let value = self.parse_numeric_text("SignedInteger")?;
         value
             .parse::<i64>()
-            .map_err(|_| NotaDecodeError::InvalidInteger {
-                value: value.to_owned(),
-            })
+            .map_err(|_| NotaDecodeError::InvalidInteger { value })
     }
 
     pub fn parse_i32(&self) -> Result<i32, NotaDecodeError> {
@@ -442,22 +452,25 @@ impl<'block> NotaBlock<'block> {
     }
 
     pub fn parse_float(&self) -> Result<f64, NotaDecodeError> {
-        let value = self.parse_integer_text("Float")?;
+        let value = self.parse_numeric_text("Float")?;
         value
             .parse::<f64>()
             .map_err(|_| NotaDecodeError::InvalidValue {
                 type_name: "Float",
-                value: value.to_owned(),
+                value,
                 reason: "expected a finite or non-finite Rust f64 literal".to_owned(),
             })
     }
 
-    fn parse_integer_text(&self, type_name: &'static str) -> Result<&'block str, NotaDecodeError> {
-        let value = self
-            .block
-            .demote_to_string()
-            .ok_or(NotaDecodeError::ExpectedAtom { type_name })?;
-        Ok(value)
+    /// The flat literal text of a numeric block. A number that carries a
+    /// fractional period — `-122.3` — is a dot-application at the raw layer, so
+    /// its literal is reconstructed from the dotted segments rather than read
+    /// as a single atom; a period-free integer is a bare atom whose text is the
+    /// same reconstruction of one segment.
+    fn parse_numeric_text(&self, type_name: &'static str) -> Result<String, NotaDecodeError> {
+        self.block
+            .dotted_text()
+            .ok_or(NotaDecodeError::ExpectedAtom { type_name })
     }
 
     pub fn parse_boolean(&self) -> Result<bool, NotaDecodeError> {
@@ -478,6 +491,18 @@ impl<'block> NotaBlock<'block> {
     }
 }
 
+/// The one canonical NOTA surface form a string's content takes. The forms are
+/// mutually exclusive by construction — [`NotaString::canonical_form`] picks the
+/// least-delimited form that carries the content faithfully — so both the
+/// encoder and the redundant-delimiter check read a single classification rather
+/// than scattering per-character conditionals.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StringForm {
+    BareDotted,
+    Parenthesis,
+    PipeText,
+}
+
 pub struct NotaString<'value> {
     value: &'value str,
 }
@@ -488,37 +513,80 @@ impl<'value> NotaString<'value> {
     }
 
     pub fn format(&self) -> String {
-        if self.qualifies_as_bare_string_atom() {
-            return self.value.to_owned();
+        match self.canonical_form() {
+            StringForm::BareDotted => self.value.to_owned(),
+            StringForm::Parenthesis => format!("({})", self.value),
+            StringForm::PipeText => format!("(|{}|)", self.escape_pipe_text()),
+        }
+    }
+
+    /// The single canonical NOTA form for this string's content. The three forms
+    /// are ordered by how little delimiter they spend, and the first one that can
+    /// carry the content faithfully wins, so each form narrows to its honest role:
+    ///
+    /// - [`StringForm::BareDotted`] — content that is a period-joined chain of
+    ///   bare atoms, so the raw parser rebuilds a dot-application whose flat
+    ///   dotted text is exactly the content: `schema`, `file.txt`,
+    ///   `nix.prometheus.goldragon.criome`. A period is a structural operator at
+    ///   the raw layer, but an expected `String` reclaims the split text, so a
+    ///   period-bearing string no longer needs an escape.
+    /// - [`StringForm::Parenthesis`] — content that is single-space-separated
+    ///   words, each itself bare-dotted, so the space-joined `( … )` form
+    ///   rebuilds it: `alpha beta`, `version 1.2`.
+    /// - [`StringForm::PipeText`] — everything else: delimiter glyphs, newlines
+    ///   and indentation, comment markers, pipe-close markers, irregular
+    ///   whitespace, or the empty string. Only the literal-preserving
+    ///   `( | … | )` form carries these, with close markers escaped.
+    fn canonical_form(&self) -> StringForm {
+        if self.qualifies_as_bare_dotted_string() {
+            StringForm::BareDotted
+        } else if self.qualifies_as_parenthesized_string() {
+            StringForm::Parenthesis
+        } else {
+            StringForm::PipeText
+        }
+    }
+
+    /// Whether the content is a non-empty period-joined chain of bare atoms. Each
+    /// period-separated segment must be a non-empty run of bare-atom characters,
+    /// so the raw parser rebuilds a dot-application (or a lone atom) whose flat
+    /// dotted text equals the content. A comment marker breaks atom scanning, so
+    /// content carrying `;;` is never bare.
+    fn qualifies_as_bare_dotted_string(&self) -> bool {
+        if self.value.is_empty() || self.value.contains(";;") {
+            return false;
+        }
+        self.value.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|character| AtomCharacter::new(character).is_bare_string())
+        })
+    }
+
+    /// Whether the content is single-space-separated words that each qualify as
+    /// bare-dotted. The space-joined `( … )` form skips whitespace adjacent to
+    /// object boundaries, so only single ASCII spaces between non-empty words
+    /// survive a round trip: a leading or trailing space, a doubled space, or any
+    /// non-space whitespace forces the literal-preserving pipe form instead.
+    fn qualifies_as_parenthesized_string(&self) -> bool {
+        if !self.value.contains(' ') {
+            return false;
         }
         if self
             .value
             .chars()
-            .any(|character| matches!(character, '[' | ']' | '(' | ')' | '{' | '}' | '\n'))
-            || self.value.contains(";;")
+            .any(|character| character.is_whitespace() && character != ' ')
         {
-            format!("[|{}|]", self.escape_pipe_text())
-        } else {
-            format!("[{}]", self.value)
+            return false;
         }
+        self.value
+            .split(' ')
+            .all(|word| NotaString::new(word).qualifies_as_bare_dotted_string())
     }
 
-    fn qualifies_as_bare_string_atom(&self) -> bool {
-        !self.value.is_empty()
-            && !self.value.contains(";;")
-            && !self
-                .value
-                .as_bytes()
-                .windows(2)
-                .any(|pair| matches!(pair, b"|)" | b"|]" | b"|}"))
-            && self
-                .value
-                .chars()
-                .all(|character| AtomCharacter::new(character).is_bare_string())
-    }
-
-    fn reject_redundant_delimiter(&self) -> Result<(), NotaDecodeError> {
-        if self.qualifies_as_bare_string_atom() {
+    fn reject_redundant_delimiter(&self, used: StringForm) -> Result<(), NotaDecodeError> {
+        if self.canonical_form() != used {
             return Err(NotaDecodeError::NonCanonicalStringDelimiter {
                 value: self.value.to_owned(),
                 canonical: self.format(),
@@ -534,7 +602,7 @@ impl<'value> NotaString<'value> {
             if character == '\\' {
                 escaped.push('\\');
                 escaped.push('\\');
-            } else if character == '|' && characters.peek() == Some(&']') {
+            } else if character == '|' && characters.peek() == Some(&')') {
                 escaped.push('\\');
                 escaped.push('|');
             } else {
@@ -582,20 +650,32 @@ impl<'block> NotaCollection<'block> {
         ParseKey: FnMut(&Block) -> Result<Key, NotaDecodeError>,
         ParseValue: FnMut(&Block) -> Result<Value, NotaDecodeError>,
     {
-        let root_objects = self.block.as_delimited(Delimiter::Brace).ok_or(
+        let (head, payload) =
+            self.block
+                .as_application()
+                .ok_or(NotaDecodeError::ExpectedDelimited {
+                    type_name: "Map",
+                    delimiter: "Map.( … ) application",
+                })?;
+        if head.demote_to_string() != Some("Map") {
+            return Err(NotaDecodeError::UnknownVariant {
+                enum_name: "Map",
+                variant: head.dotted_text().unwrap_or_default(),
+            });
+        }
+        let entries = payload.as_delimited(Delimiter::Parenthesis).ok_or(
             NotaDecodeError::ExpectedDelimited {
-                type_name: "BTreeMap",
-                delimiter: Delimiter::Brace.description(),
+                type_name: "Map",
+                delimiter: Delimiter::Parenthesis.description(),
             },
         )?;
         let mut map = BTreeMap::new();
-        let mut index = 0;
-        while index < root_objects.len() {
-            let entry = DottedExpectation::Uncapitalized.read_entry(&root_objects[index..])?;
+        for entry_block in entries {
+            let entry =
+                DottedExpectation::Uncapitalized.read_entry(std::slice::from_ref(entry_block))?;
             let key = parse_key(entry.key())?;
             let value = parse_value(entry.value())?;
             map.insert(key, value);
-            index += entry.consumed();
         }
         Ok(map)
     }
@@ -610,9 +690,14 @@ impl<'block> NotaCollection<'block> {
         if self.block.demote_to_string() == Some("None") {
             return Ok(None);
         }
-        let children =
-            NotaBlock::new(self.block).expect_children(Delimiter::Parenthesis, "Option", 2)?;
-        let tag = children[0]
+        let (head, payload) =
+            self.block
+                .as_application()
+                .ok_or(NotaDecodeError::ExpectedDelimited {
+                    type_name: "Option",
+                    delimiter: "None atom or Some.payload application",
+                })?;
+        let tag = head
             .demote_to_string()
             .ok_or(NotaDecodeError::ExpectedAtom {
                 type_name: "Option tag",
@@ -623,7 +708,7 @@ impl<'block> NotaCollection<'block> {
                 variant: tag.to_owned(),
             });
         }
-        Ok(Some(parse(&children[1])?))
+        Ok(Some(parse(payload)?))
     }
 }
 
@@ -950,7 +1035,7 @@ where
         for (key, value) in self {
             entries.push(format!("{}.{}", Key::to_nota(key), Value::to_nota(value)));
         }
-        Delimiter::Brace.wrap(entries)
+        format!("Map.{}", Delimiter::Parenthesis.wrap(entries))
     }
 }
 
@@ -969,7 +1054,7 @@ where
 {
     fn to_nota(&self) -> String {
         match self {
-            Some(inner) => Delimiter::Parenthesis.wrap(["Some".to_owned(), Inner::to_nota(inner)]),
+            Some(inner) => format!("Some.{}", Inner::to_nota(inner)),
             None => "None".to_owned(),
         }
     }

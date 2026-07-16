@@ -136,7 +136,20 @@ impl PrettyLayout {
             } if !root_objects.is_empty() && !self.fits(&inline, depth) => {
                 self.render_broken(*delimiter, root_objects, source, depth, rendered);
             }
-            Block::Delimited { .. } | Block::PipeText(_) | Block::Atom(_) => {
+            // A dot-application that overflows breaks inside its payload: the
+            // head chain stays glued to the period, and the payload — normally
+            // the delimited block that made the line long — reflows at this
+            // same depth. `Public.Newtype.( … )` keeps `Public.Newtype.(` on
+            // one line and reflows the body.
+            Block::Application { head, payload, .. } if !self.fits(&inline, depth) => {
+                rendered.push_str(&head.render_inline(source));
+                rendered.push('.');
+                self.render_block(payload, source, depth, rendered);
+            }
+            Block::Delimited { .. }
+            | Block::Application { .. }
+            | Block::PipeText(_)
+            | Block::Atom(_) => {
                 rendered.push_str(&inline);
             }
         }
@@ -214,6 +227,13 @@ impl Block {
                 }
                 rendered.push_str(delimiter.closing_text());
                 rendered
+            }
+            Self::Application { head, payload, .. } => {
+                format!(
+                    "{}.{}",
+                    head.render_inline(source),
+                    payload.render_inline(source)
+                )
             }
             Self::PipeText(_) | Self::Atom(_) => self.reemit(source).to_owned(),
         }
