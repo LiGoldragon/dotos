@@ -150,15 +150,16 @@ tagged or data-carrying macro variant.
   are stored directly in the root body.
 - `Box<T>` is a storage wrapper only. Its codec delegates to `T` so recursive
   Rust data does not create a second NOTA shape.
-- `macros` is the reusable macro-node mechanism. `MacroNodeDefinition`
-  describes a standalone structural pattern at a position, `MacroRegistry`
-  dispatches a candidate block sequence through ordered definitions, and
-  `MacroMatch` returns named captures to the consumer. This registry surface is
-  useful for low-level exploration and schema's existing transitional matcher,
-  but it is not the conceptual home of typed macro nodes. Delimited captures
-  expose the matched block's inner `NotaBody`, not the wrapper delimiter, so the
-  next semantic parser always receives body contents. The mechanism is
-  semantic-neutral: schema may register struct/enum/newtype patterns, but
+- `macros` is the reusable macro-node mechanism, expressed entirely through the
+  typed structural-variant codec (`StructuralVariant`/`StructuralVariantSet`
+  below). A `Pattern` of ordered `PatternElement`s matches a candidate block
+  sequence, and `MacroMatch` returns named captures to the consumer. The retired
+  standalone `MacroNodeDefinition`/`MacroRegistry` dispatch pair — a parallel
+  matcher schema once consulted transitionally — is gone; the typed structural
+  variants are the sole macro-node surface. Delimited captures expose the
+  matched block's inner `NotaBody`, not the wrapper delimiter, so the next
+  semantic parser always receives body contents. The mechanism is
+  semantic-neutral: consumers may express struct/enum/newtype patterns, but
   nota only matches atoms, delimiters, literals, and rest captures. A
   delimited pattern can carry a recursive `Pattern` over that block's children,
   giving consumers arbitrarily nested structural constraints without recursive
@@ -166,8 +167,8 @@ tagged or data-carrying macro variant.
 - `BlockShape` is the ergonomic per-variant structural description layered on
   top of `Pattern`. It gives structural macro authors names such as
   Pascal-case atom, headed parenthesis, Pascal-headed parenthesis, literal, and
-  delimited block, then lowers those shapes into `Pattern` for either
-  standalone macro definitions or typed structural variants.
+  delimited block, then lowers those shapes into `Pattern` for typed structural
+  variants.
 - `StructuralVariant` and `StructuralVariantSet` are the codec-facing macro-node
   nouns. A variant carries a name, a structural pattern, and an expected-shape
   diagnostic. The set carries the expected position for one typed node and tries

@@ -28,10 +28,9 @@ pub use instance_schema::{
 };
 pub use macros::{
     AtomCase, AtomShape, BlockShape, CaptureName, CapturedValue, DelimitedShape, MacroCandidate,
-    MacroConflict, MacroDelimiter, MacroError, MacroMatch, MacroNodeDefinition, MacroObjectCount,
-    MacroRegistry, Pattern, PatternElement, PositionPredicate, SigilPosition, SigilSpec,
-    StructuralMacroError, StructuralMacroNode, StructuralMacroNodeError, StructuralVariant,
-    StructuralVariantConflict, StructuralVariantError, StructuralVariantSet,
+    MacroDelimiter, MacroMatch, MacroObjectCount, Pattern, PatternElement, PositionPredicate,
+    SigilPosition, SigilSpec, StructuralMacroError, StructuralMacroNode, StructuralMacroNodeError,
+    StructuralVariant, StructuralVariantConflict, StructuralVariantError, StructuralVariantSet,
 };
 pub use nota_derive::{NotaDecode, NotaDecodeTraced, NotaEncode, StructuralMacroNode};
 pub use parser::{

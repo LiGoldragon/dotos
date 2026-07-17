@@ -112,68 +112,6 @@ impl PositionPredicate {
     Eq,
     PartialEq,
 )]
-pub struct MacroNodeDefinition {
-    name: String,
-    position: PositionPredicate,
-    pattern: Pattern,
-    expected: String,
-}
-
-impl MacroNodeDefinition {
-    pub fn new(
-        name: impl Into<String>,
-        position: PositionPredicate,
-        pattern: Pattern,
-        expected: impl Into<String>,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            position,
-            pattern,
-            expected: expected.into(),
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn position(&self) -> &PositionPredicate {
-        &self.position
-    }
-
-    pub fn pattern(&self) -> &Pattern {
-        &self.pattern
-    }
-
-    pub fn expected(&self) -> &str {
-        &self.expected
-    }
-
-    pub fn matches<'block>(
-        &self,
-        candidate: &MacroCandidate<'block>,
-    ) -> Option<MacroMatch<'block>> {
-        if self.position != candidate.position {
-            return None;
-        }
-        self.pattern
-            .matches(candidate.blocks())
-            .map(|captures| MacroMatch::new(self.name.clone(), captures))
-    }
-}
-
-#[derive(
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-)]
 #[rkyv(
     bytecheck(bounds(
         __C: rkyv::validation::ArchiveContext,
@@ -273,15 +211,6 @@ impl BlockShape {
 
     pub fn into_pattern(self) -> Pattern {
         Pattern::new(vec![self.into_pattern_element()])
-    }
-
-    pub fn into_macro_node(
-        self,
-        name: impl Into<String>,
-        position: PositionPredicate,
-        expected: impl Into<String>,
-    ) -> MacroNodeDefinition {
-        MacroNodeDefinition::new(name, position, self.into_pattern(), expected)
     }
 
     pub fn into_structural_variant(
@@ -393,14 +322,6 @@ impl StructuralVariant {
         }
     }
 
-    pub fn from_macro_node(node: MacroNodeDefinition) -> Self {
-        Self {
-            name: node.name,
-            pattern: node.pattern,
-            expected: node.expected,
-        }
-    }
-
     pub fn from_shape(
         name: impl Into<String>,
         shape: BlockShape,
@@ -419,10 +340,6 @@ impl StructuralVariant {
 
     pub fn expected(&self) -> &str {
         &self.expected
-    }
-
-    pub fn into_macro_node(self, position: PositionPredicate) -> MacroNodeDefinition {
-        MacroNodeDefinition::new(self.name, position, self.pattern, self.expected)
     }
 
     pub fn matches<'block>(&self, blocks: &[&'block Block]) -> Option<MacroMatch<'block>> {
@@ -982,68 +899,6 @@ impl<'block> MacroCandidate<'block> {
 }
 
 #[derive(Clone, Debug)]
-pub struct MacroRegistry {
-    nodes: Vec<MacroNodeDefinition>,
-}
-
-impl MacroRegistry {
-    pub fn new(nodes: Vec<MacroNodeDefinition>) -> Result<Self, MacroError> {
-        let registry = Self { nodes };
-        registry.validate_no_silent_conflicts()?;
-        Ok(registry)
-    }
-
-    pub fn unchecked(nodes: Vec<MacroNodeDefinition>) -> Self {
-        Self { nodes }
-    }
-
-    pub fn nodes(&self) -> &[MacroNodeDefinition] {
-        &self.nodes
-    }
-
-    pub fn dispatch<'block>(
-        &self,
-        candidate: &MacroCandidate<'block>,
-    ) -> Result<MacroMatch<'block>, MacroError> {
-        let mut tried = Vec::new();
-        let mut expected = Vec::new();
-        for node in self
-            .nodes
-            .iter()
-            .filter(|node| node.position() == candidate.position())
-        {
-            tried.push(node.name().to_owned());
-            expected.push(format!("{}: {}", node.name(), node.expected()));
-            if let Some(matched) = node.matches(candidate) {
-                return Ok(matched);
-            }
-        }
-        Err(MacroError::NoMatch {
-            position: candidate.position().describe(),
-            tried,
-            expected,
-            found: candidate.shape_description(),
-        })
-    }
-
-    pub fn validate_no_silent_conflicts(&self) -> Result<(), MacroError> {
-        for (index, first) in self.nodes.iter().enumerate() {
-            for second in self.nodes.iter().skip(index + 1) {
-                if first.position() == second.position()
-                    && first.pattern().silently_shadows(second.pattern())
-                {
-                    return Err(MacroError::Conflict(MacroConflict::new(
-                        first.name().to_owned(),
-                        second.name().to_owned(),
-                    )));
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct MacroMatch<'block> {
     macro_name: String,
     captures: MacroCaptures<'block>,
@@ -1143,63 +998,6 @@ impl<'block> CapturedValue<'block> {
         }
     }
 }
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MacroConflict {
-    first: String,
-    second: String,
-}
-
-impl MacroConflict {
-    pub fn new(first: String, second: String) -> Self {
-        Self { first, second }
-    }
-
-    pub fn first(&self) -> &str {
-        &self.first
-    }
-
-    pub fn second(&self) -> &str {
-        &self.second
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MacroError {
-    NoMatch {
-        position: String,
-        tried: Vec<String>,
-        expected: Vec<String>,
-        found: String,
-    },
-    Conflict(MacroConflict),
-}
-
-impl fmt::Display for MacroError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoMatch {
-                position,
-                tried,
-                expected,
-                found,
-            } => write!(
-                formatter,
-                "no macro matched at {position}; tried [{}]; expected [{}]; found {found}",
-                tried.join(", "),
-                expected.join(", ")
-            ),
-            Self::Conflict(conflict) => write!(
-                formatter,
-                "macro registry conflict between {} and {}",
-                conflict.first(),
-                conflict.second()
-            ),
-        }
-    }
-}
-
-impl std::error::Error for MacroError {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StructuralVariantConflict {
