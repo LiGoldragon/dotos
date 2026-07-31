@@ -29,12 +29,13 @@ pub use instance_schema::{
 };
 pub use macros::{
     AtomCase, AtomShape, BlockShape, CaptureName, CapturedValue, DelimitedShape, MacroCandidate,
-    MacroDelimiter, MacroMatch, MacroObjectCount, Pattern, PatternElement, PositionPredicate,
-    SigilPosition, SigilSpec, StructuralMacroError, StructuralMacroNode, StructuralMacroNodeError,
-    StructuralVariant, StructuralVariantConflict, StructuralVariantError, StructuralVariantSet,
+    MacroConflict, MacroDelimiter, MacroError, MacroMatch, MacroNodeDefinition, MacroObjectCount,
+    MacroRegistry, Pattern, PatternElement, PositionPredicate, SigilPosition, SigilSpec,
+    StructuralMacroError, StructuralMacroNode, StructuralMacroNodeError, StructuralVariant,
+    StructuralVariantConflict, StructuralVariantError, StructuralVariantSet,
 };
 pub use parser::{
-    Atom, Block, Delimiter, Document, DotosError, PipeText, SourcePosition, SourceSpan,
-    StructureHeader, StructureShape, StructureSlot,
+    Atom, AtomClassification, Block, Delimiter, Document, DotosError, ParseMode, PipeText,
+    SourcePosition, SourceSpan, StructureHeader, StructureShape, StructureSlot,
 };
 pub use pretty::{DotosOutputForm, PrettyLayout};

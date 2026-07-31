@@ -21,8 +21,14 @@ pub struct Document {
 
 impl Document {
     pub fn parse(source: impl Into<String>) -> Result<Self, DotosError> {
+        Self::parse_with_mode(source, ParseMode::Default)
+    }
+
+    /// Parse with an explicitly selected grammar extension. The default grammar
+    /// keeps `(| … |)` as pipe text; structural-pipe consumers must opt in.
+    pub fn parse_with_mode(source: impl Into<String>, mode: ParseMode) -> Result<Self, DotosError> {
         let source = source.into();
-        let mut parser = Parser::new(&source);
+        let mut parser = Parser::new(&source, mode);
         let root_objects = parser.parse_document()?;
         Ok(Self {
             source,
@@ -51,6 +57,15 @@ impl Document {
         builder.push_document(self);
         builder.finish()
     }
+}
+
+/// Optional grammar extensions for consumers that carry a legacy structural
+/// shape as data. This never changes [`Document::parse`]'s default grammar.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ParseMode {
+    #[default]
+    Default,
+    StructuralPipe,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -119,6 +134,26 @@ impl Block {
             self,
             Self::Delimited {
                 delimiter: Delimiter::Brace,
+                ..
+            }
+        )
+    }
+
+    pub fn is_pipe_parenthesis(&self) -> bool {
+        matches!(
+            self,
+            Self::Delimited {
+                delimiter: Delimiter::PipeParenthesis,
+                ..
+            }
+        )
+    }
+
+    pub fn is_pipe_brace(&self) -> bool {
+        matches!(
+            self,
+            Self::Delimited {
+                delimiter: Delimiter::PipeBrace,
                 ..
             }
         )
@@ -271,6 +306,14 @@ impl Block {
                 delimiter: Delimiter::Brace,
                 ..
             } => StructureShape::Brace,
+            Self::Delimited {
+                delimiter: Delimiter::PipeParenthesis,
+                ..
+            } => StructureShape::PipeParenthesis,
+            Self::Delimited {
+                delimiter: Delimiter::PipeBrace,
+                ..
+            } => StructureShape::PipeBrace,
             Self::Application { .. } => StructureShape::Application,
             Self::PipeText(_) => StructureShape::PipeText,
             Self::Atom(_) => StructureShape::Atom,
@@ -287,6 +330,8 @@ pub enum Delimiter {
     Parenthesis,
     SquareBracket,
     Brace,
+    PipeParenthesis,
+    PipeBrace,
 }
 
 impl Delimiter {
@@ -295,6 +340,8 @@ impl Delimiter {
             Self::Parenthesis => "(",
             Self::SquareBracket => "[",
             Self::Brace => "{",
+            Self::PipeParenthesis => "(|",
+            Self::PipeBrace => "{|",
         }
     }
 
@@ -303,6 +350,8 @@ impl Delimiter {
             Self::Parenthesis => ")",
             Self::SquareBracket => "]",
             Self::Brace => "}",
+            Self::PipeParenthesis => "|)",
+            Self::PipeBrace => "|}",
         }
     }
 
@@ -311,6 +360,8 @@ impl Delimiter {
             Self::Parenthesis => "parenthesis",
             Self::SquareBracket => "square bracket",
             Self::Brace => "brace",
+            Self::PipeParenthesis => "pipe parenthesis",
+            Self::PipeBrace => "pipe brace",
         }
     }
 
@@ -329,6 +380,8 @@ impl Delimiter {
             Self::Parenthesis => ')',
             Self::SquareBracket => ']',
             Self::Brace => '}',
+            Self::PipeParenthesis => ')',
+            Self::PipeBrace => '}',
         }
     }
 
@@ -439,6 +492,8 @@ pub enum StructureShape {
     Brace,
     PipeText,
     Application,
+    PipeParenthesis,
+    PipeBrace,
     Unknown,
 }
 
@@ -452,6 +507,8 @@ impl StructureShape {
             Self::Brace => "brace",
             Self::PipeText => "pipe text",
             Self::Application => "application",
+            Self::PipeParenthesis => "pipe parenthesis",
+            Self::PipeBrace => "pipe brace",
             Self::Unknown => "unknown",
         }
     }
@@ -465,6 +522,8 @@ impl StructureShape {
             Self::Brace => 4,
             Self::PipeText => 5,
             Self::Application => 6,
+            Self::PipeParenthesis => 7,
+            Self::PipeBrace => 8,
             Self::Unknown => 15,
         }
     }
@@ -478,6 +537,8 @@ impl StructureShape {
             4 => Self::Brace,
             5 => Self::PipeText,
             6 => Self::Application,
+            7 => Self::PipeParenthesis,
+            8 => Self::PipeBrace,
             _ => Self::Unknown,
         }
     }
@@ -545,6 +606,29 @@ pub struct PipeText {
 pub struct Atom {
     text: String,
     span: SourceSpan,
+}
+
+/// A lightweight classification compatibility surface for consumers that need
+/// to decide whether an owned string can be emitted as a bare DOTOS atom.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AtomClassification {
+    SymbolCandidate,
+    Other,
+}
+
+impl AtomClassification {
+    pub fn classify(text: &str) -> Self {
+        if !text.is_empty()
+            && text.chars().all(|character| {
+                !character.is_whitespace()
+                    && !matches!(character, '"' | '.' | '(' | ')' | '[' | ']' | '{' | '}')
+            })
+        {
+            Self::SymbolCandidate
+        } else {
+            Self::Other
+        }
+    }
 }
 
 impl Atom {
@@ -683,13 +767,15 @@ impl std::error::Error for DotosError {}
 
 struct Parser<'source> {
     source: &'source str,
+    mode: ParseMode,
     cursor: Cursor,
 }
 
 impl<'source> Parser<'source> {
-    fn new(source: &'source str) -> Self {
+    fn new(source: &'source str, mode: ParseMode) -> Self {
         Self {
             source,
+            mode,
             cursor: Cursor::default(),
         }
     }
@@ -749,9 +835,17 @@ impl<'source> Parser<'source> {
     /// and is rejected.
     fn parse_primary(&mut self) -> Result<Block, DotosError> {
         match self.peek() {
-            Some('(') if self.peek_next() == Some('|') => self.parse_pipe_text(),
+            Some('(') if self.peek_next() == Some('|') => match self.mode {
+                ParseMode::Default => self.parse_pipe_text(),
+                ParseMode::StructuralPipe => self.parse_pipe_delimited(Delimiter::PipeParenthesis),
+            },
             Some('(') => self.parse_delimited(Delimiter::Parenthesis),
             Some('[') => self.parse_delimited(Delimiter::SquareBracket),
+            Some('{')
+                if self.peek_next() == Some('|') && self.mode == ParseMode::StructuralPipe =>
+            {
+                self.parse_pipe_delimited(Delimiter::PipeBrace)
+            }
             Some('{') => self.parse_delimited(Delimiter::Brace),
             Some('.') => Err(DotosError::UnexpectedDot {
                 position: self.cursor.position(),
@@ -815,6 +909,41 @@ impl<'source> Parser<'source> {
         }
     }
 
+    fn parse_pipe_delimited(&mut self, delimiter: Delimiter) -> Result<Block, DotosError> {
+        let start = self.cursor.position();
+        self.bump();
+        self.bump();
+        let mut root_objects = Vec::new();
+        loop {
+            self.skip_spacing();
+            let Some(character) = self.peek() else {
+                return Err(DotosError::UnclosedDelimiter {
+                    delimiter,
+                    position: start,
+                });
+            };
+            if character == '|' && self.peek_next() == Some(delimiter.closing()) {
+                self.bump();
+                self.bump();
+                return Ok(Block::Delimited {
+                    delimiter,
+                    span: SourceSpan {
+                        start,
+                        end: self.cursor.position(),
+                    },
+                    root_objects,
+                });
+            }
+            if Delimiter::from_closing(character).is_some() {
+                return Err(DotosError::UnexpectedClose {
+                    found: character,
+                    position: self.cursor.position(),
+                });
+            }
+            root_objects.push(self.parse_object()?);
+        }
+    }
+
     fn parse_pipe_text(&mut self) -> Result<Block, DotosError> {
         let start = self.cursor.position();
         self.bump();
@@ -865,7 +994,7 @@ impl<'source> Parser<'source> {
     }
 
     fn at_pipe_delimiter_close(&self) -> bool {
-        self.peek() == Some('|') && self.peek_next() == Some(')')
+        self.peek() == Some('|') && matches!(self.peek_next(), Some(')') | Some('}'))
     }
 
     fn at_comment_start(&self) -> bool {

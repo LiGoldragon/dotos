@@ -1,4 +1,4 @@
-use dotos::{Delimiter, Document, DotosError};
+use dotos::{Block, Delimiter, Document, DotosError, ParseMode};
 
 #[test]
 fn parses_ordered_root_objects_and_reemits_from_spans() {
@@ -125,6 +125,30 @@ fn pipe_text_is_delimiter_safe_and_not_recursively_parsed() {
         Some("macro body with ] and \" and apostrophe's text")
     );
     assert_eq!(root.reemit(document.source()), source);
+}
+
+#[test]
+fn structural_pipe_mode_leaves_default_pipe_text_unchanged() {
+    let source = "(| Kind (Decision [Reason]) |)";
+    let default = Document::parse(source).expect("default dotos parses pipe text");
+    assert!(default.root_object_at(0).is_some_and(Block::is_pipe_text));
+
+    let structural = Document::parse_with_mode(source, ParseMode::StructuralPipe)
+        .expect("structural pipe dotos parses recursive delimiters");
+    assert!(
+        structural
+            .root_object_at(0)
+            .is_some_and(Block::is_pipe_parenthesis)
+    );
+    assert_eq!(
+        structural.root_object_at(0).unwrap().holds_root_objects(),
+        2
+    );
+
+    let brace = Document::parse_with_mode("{| Entry [Topic [Tag]] |}", ParseMode::StructuralPipe)
+        .expect("structural pipe dotos parses pipe brace");
+    assert!(brace.root_object_at(0).is_some_and(Block::is_pipe_brace));
+    assert_eq!(brace.root_object_at(0).unwrap().holds_root_objects(), 2);
 }
 
 #[test]

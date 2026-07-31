@@ -43,6 +43,8 @@ pub enum MacroDelimiter {
     Parenthesis,
     SquareBracket,
     Brace,
+    PipeParenthesis,
+    PipeBrace,
 }
 
 impl MacroDelimiter {
@@ -51,6 +53,8 @@ impl MacroDelimiter {
             Delimiter::Parenthesis => Self::Parenthesis,
             Delimiter::SquareBracket => Self::SquareBracket,
             Delimiter::Brace => Self::Brace,
+            Delimiter::PipeParenthesis => Self::PipeParenthesis,
+            Delimiter::PipeBrace => Self::PipeBrace,
         }
     }
 
@@ -66,6 +70,8 @@ impl MacroDelimiter {
             Self::Parenthesis => "parenthesis",
             Self::SquareBracket => "square bracket",
             Self::Brace => "brace",
+            Self::PipeParenthesis => "pipe parenthesis",
+            Self::PipeBrace => "pipe brace",
         }
     }
 }
@@ -98,6 +104,55 @@ impl PositionPredicate {
             Self::DelimitedEntry(delimiter) => format!("{} entry", delimiter.as_str()),
             Self::Named(name) => name.clone(),
         }
+    }
+}
+
+/// A position-scoped structural variant retained for consumers that own an
+/// ordered registry rather than one typed variant set per decode site.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MacroNodeDefinition {
+    name: String,
+    position: PositionPredicate,
+    pattern: Pattern,
+    expected: String,
+}
+
+impl MacroNodeDefinition {
+    pub fn new(
+        name: impl Into<String>,
+        position: PositionPredicate,
+        pattern: Pattern,
+        expected: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            position,
+            pattern,
+            expected: expected.into(),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn position(&self) -> &PositionPredicate {
+        &self.position
+    }
+
+    pub fn pattern(&self) -> &Pattern {
+        &self.pattern
+    }
+
+    pub fn expected(&self) -> &str {
+        &self.expected
+    }
+
+    fn matches<'block>(&self, candidate: &MacroCandidate<'block>) -> Option<MacroMatch<'block>> {
+        (self.position == *candidate.position())
+            .then(|| self.pattern.matches(candidate.blocks()))
+            .flatten()
+            .map(|captures| MacroMatch::new(self.name.clone(), captures))
     }
 }
 
@@ -220,6 +275,15 @@ impl BlockShape {
     ) -> StructuralVariant {
         StructuralVariant::new(name, self.into_pattern(), expected)
     }
+
+    pub fn into_macro_node(
+        self,
+        name: impl Into<String>,
+        position: PositionPredicate,
+        expected: impl Into<String>,
+    ) -> MacroNodeDefinition {
+        MacroNodeDefinition::new(name, position, self.into_pattern(), expected)
+    }
 }
 
 #[derive(
@@ -330,6 +394,10 @@ impl StructuralVariant {
         shape.into_structural_variant(name, expected)
     }
 
+    pub fn from_macro_node(node: MacroNodeDefinition) -> Self {
+        Self::new(node.name, node.pattern, node.expected)
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -340,6 +408,10 @@ impl StructuralVariant {
 
     pub fn expected(&self) -> &str {
         &self.expected
+    }
+
+    pub fn into_macro_node(self, position: PositionPredicate) -> MacroNodeDefinition {
+        MacroNodeDefinition::new(self.name, position, self.pattern, self.expected)
     }
 
     pub fn matches<'block>(&self, blocks: &[&'block Block]) -> Option<MacroMatch<'block>> {
@@ -416,6 +488,76 @@ impl StructuralVariantSet {
         Ok(())
     }
 }
+
+/// Ordered, position-scoped structural dispatch retained for schema consumers
+/// that register their grammar incrementally. New code should prefer
+/// [`StructuralVariantSet`] at a known decode position.
+#[derive(Clone, Debug)]
+pub struct MacroRegistry {
+    nodes: Vec<MacroNodeDefinition>,
+}
+
+impl MacroRegistry {
+    pub fn new(nodes: Vec<MacroNodeDefinition>) -> Result<Self, StructuralVariantError> {
+        let registry = Self { nodes };
+        registry.validate_no_silent_conflicts()?;
+        Ok(registry)
+    }
+
+    pub fn unchecked(nodes: Vec<MacroNodeDefinition>) -> Self {
+        Self { nodes }
+    }
+
+    pub fn nodes(&self) -> &[MacroNodeDefinition] {
+        &self.nodes
+    }
+
+    pub fn dispatch<'block>(
+        &self,
+        candidate: &MacroCandidate<'block>,
+    ) -> Result<MacroMatch<'block>, StructuralVariantError> {
+        let mut tried = Vec::new();
+        let mut expected = Vec::new();
+        for node in self
+            .nodes
+            .iter()
+            .filter(|node| node.position() == candidate.position())
+        {
+            tried.push(node.name().to_owned());
+            expected.push(format!("{}: {}", node.name(), node.expected()));
+            if let Some(matched) = node.matches(candidate) {
+                return Ok(matched);
+            }
+        }
+        Err(StructuralVariantError::NoMatch {
+            position: candidate.position().describe(),
+            tried,
+            expected,
+            found: candidate.shape_description(),
+        })
+    }
+
+    pub fn validate_no_silent_conflicts(&self) -> Result<(), StructuralVariantError> {
+        for (index, first) in self.nodes.iter().enumerate() {
+            for second in self.nodes.iter().skip(index + 1) {
+                if first.position() == second.position()
+                    && first.pattern().silently_shadows(second.pattern())
+                {
+                    return Err(StructuralVariantError::Conflict(
+                        StructuralVariantConflict::new(
+                            first.name().to_owned(),
+                            second.name().to_owned(),
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+pub type MacroConflict = StructuralVariantConflict;
+pub type MacroError = StructuralVariantError;
 
 #[derive(
     rkyv::Archive,
