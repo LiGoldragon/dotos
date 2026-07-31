@@ -515,7 +515,7 @@ impl MacroRegistry {
     pub fn dispatch<'block>(
         &self,
         candidate: &MacroCandidate<'block>,
-    ) -> Result<MacroMatch<'block>, StructuralVariantError> {
+    ) -> Result<MacroMatch<'block>, MacroError> {
         let mut tried = Vec::new();
         let mut expected = Vec::new();
         for node in self
@@ -529,7 +529,7 @@ impl MacroRegistry {
                 return Ok(matched);
             }
         }
-        Err(StructuralVariantError::NoMatch {
+        Err(MacroError::NoMatch {
             position: candidate.position().describe(),
             tried,
             expected,
@@ -557,7 +557,43 @@ impl MacroRegistry {
 }
 
 pub type MacroConflict = StructuralVariantConflict;
-pub type MacroError = StructuralVariantError;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MacroError {
+    NoMatch {
+        position: String,
+        tried: Vec<String>,
+        expected: Vec<String>,
+        found: String,
+    },
+    Conflict(MacroConflict),
+}
+
+impl fmt::Display for MacroError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoMatch {
+                position,
+                tried,
+                expected,
+                found,
+            } => write!(
+                formatter,
+                "no macro matched at {position}; tried [{}]; expected [{}]; found {found}",
+                tried.join(", "),
+                expected.join(", ")
+            ),
+            Self::Conflict(conflict) => write!(
+                formatter,
+                "macro registry conflict between {} and {}",
+                conflict.first(),
+                conflict.second()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for MacroError {}
 
 #[derive(
     rkyv::Archive,
