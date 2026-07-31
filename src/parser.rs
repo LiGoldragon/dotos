@@ -836,10 +836,14 @@ impl<'source> Parser<'source> {
     fn parse_primary(&mut self) -> Result<Block, DotosError> {
         match self.peek() {
             Some('(') if self.peek_next() == Some('|') => match self.mode {
-                ParseMode::Default => self.parse_pipe_text(),
+                ParseMode::Default => self.parse_pipe_text(')'),
                 ParseMode::StructuralPipe => self.parse_pipe_delimited(Delimiter::PipeParenthesis),
             },
             Some('(') => self.parse_delimited(Delimiter::Parenthesis),
+            // The bracket-pipe form is an unambiguous legacy spelling for raw
+            // text. Retain it in both modes so structural `(| … |)` adoption
+            // does not force raw schema fixtures to lose their text literals.
+            Some('[') if self.peek_next() == Some('|') => self.parse_pipe_text(']'),
             Some('[') => self.parse_delimited(Delimiter::SquareBracket),
             Some('{')
                 if self.peek_next() == Some('|') && self.mode == ParseMode::StructuralPipe =>
@@ -944,7 +948,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_pipe_text(&mut self) -> Result<Block, DotosError> {
+    fn parse_pipe_text(&mut self, closing: char) -> Result<Block, DotosError> {
         let start = self.cursor.position();
         self.bump();
         self.bump();
@@ -958,7 +962,7 @@ impl<'source> Parser<'source> {
                 } else {
                     text.push('\\');
                 }
-            } else if character == '|' && self.peek_next() == Some(')') {
+            } else if character == '|' && self.peek_next() == Some(closing) {
                 self.bump();
                 self.bump();
                 let end = self.cursor.position();

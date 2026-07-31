@@ -152,6 +152,20 @@ fn structural_pipe_mode_leaves_default_pipe_text_unchanged() {
 }
 
 #[test]
+fn bracket_pipe_text_remains_raw_text_in_both_modes() {
+    let source = "[| raw text with a closing bracket ] inside |]";
+    for mode in [ParseMode::Default, ParseMode::StructuralPipe] {
+        let document = Document::parse_with_mode(source, mode).expect("pipe text parses");
+        let block = document.root_object_at(0).expect("single root object");
+        assert!(block.is_pipe_text());
+        assert_eq!(
+            block.demote_to_string(),
+            Some(" raw text with a closing bracket ] inside ")
+        );
+    }
+}
+
+#[test]
 fn pipe_text_escapes_single_pipe_close_marker() {
     let source = "(|macro body can contain \\|) without ending|)";
     let document = Document::parse(source).expect("valid dotos");
