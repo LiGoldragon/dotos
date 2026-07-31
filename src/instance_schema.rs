@@ -2,26 +2,26 @@
 //! decoder as it validates the value.
 //!
 //! The load-bearing idea is that decoding *is* a type-directed traversal of a
-//! value against a type. [`NotaDecodeTraced`] runs that exact traversal in a
+//! value against a type. [`DotosDecodeTraced`] runs that exact traversal in a
 //! projection mode: alongside the decoded value it returns an
 //! [`InstanceSchema`] tree whose every node records the **type the decoder
 //! expected** at that position. There is no second parser, no inspection by
 //! string shape, and no per-type hand-written schema printer — the trace is a
 //! by-product of the same recursion that already validates the value.
 //!
-//! The reference kind held at each node is a nota-local [`TypeReference`]
+//! The reference kind held at each node is a dotos-local [`TypeReference`]
 //! (a type name plus the structural container forms `Vec` / `Optional` / `Map`
 //! / `FixedBytes`). Higher layers project this into their own schema-value
 //! vocabulary, such as a schema `SourceReference`, and render it through the
 //! schema encoder; this base crate never formats schema text.
 
-use crate::{Block, NotaDecode, NotaDecodeError};
+use crate::{Block, DotosDecode, DotosDecodeError};
 
 /// The type reference the decoder expected at one value position.
 ///
 /// `Named` carries the declared type name as the decoder saw it (`Kind`,
 /// `Domain`, `Entry`, `Magnitude`). The container forms mirror the blanket
-/// `NotaDecode` impls for `Vec`, `Option`, `BTreeMap`, and the byte sequences,
+/// `DotosDecode` impls for `Vec`, `Option`, `BTreeMap`, and the byte sequences,
 /// so an empty container still names its element type.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypeReference {
@@ -151,10 +151,10 @@ impl<Value> DecodedWithSchema<Value> {
 /// Decode a value and capture its per-instance schema in one pass.
 ///
 /// Every implementor runs the *same* type-directed traversal as its
-/// [`NotaDecode`] impl, but at each step it also records the reference it
-/// expected. The derive emits this alongside `NotaDecode`; this base crate
+/// [`DotosDecode`] impl, but at each step it also records the reference it
+/// expected. The derive emits this alongside `DotosDecode`; this base crate
 /// supplies the leaf and container impls.
-pub trait NotaDecodeTraced: NotaDecode {
+pub trait DotosDecodeTraced: DotosDecode {
     /// The reference the decoder expects for `Self` at a parent position,
     /// before reading the value. Containers compose their element references
     /// here so an empty container still names its element type.
@@ -162,23 +162,23 @@ pub trait NotaDecodeTraced: NotaDecode {
 
     /// Decode `block` into `Self` and the per-instance schema captured along
     /// the way.
-    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError>;
+    fn from_dotos_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, DotosDecodeError>;
 }
 
 macro_rules! scalar_traced {
     ($type:ty, $name:literal) => {
-        impl NotaDecodeTraced for $type {
+        impl DotosDecodeTraced for $type {
             fn instance_reference() -> TypeReference {
                 TypeReference::named($name)
             }
 
-            fn from_nota_block_traced(
+            fn from_dotos_block_traced(
                 block: &Block,
-            ) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
-                let value = <$type as NotaDecode>::from_nota_block(block)?;
+            ) -> Result<DecodedWithSchema<Self>, DotosDecodeError> {
+                let value = <$type as DotosDecode>::from_dotos_block(block)?;
                 Ok(DecodedWithSchema::new(
                     value,
-                    InstanceSchema::scalar(<$type as NotaDecodeTraced>::instance_reference()),
+                    InstanceSchema::scalar(<$type as DotosDecodeTraced>::instance_reference()),
                 ))
             }
         }
@@ -195,13 +195,13 @@ scalar_traced!(i64, "SignedInteger");
 scalar_traced!(f64, "Float");
 scalar_traced!(bool, "Boolean");
 
-impl NotaDecodeTraced for crate::ByteSequence {
+impl DotosDecodeTraced for crate::ByteSequence {
     fn instance_reference() -> TypeReference {
         TypeReference::named("Bytes")
     }
 
-    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
-        let value = <Self as NotaDecode>::from_nota_block(block)?;
+    fn from_dotos_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, DotosDecodeError> {
+        let value = <Self as DotosDecode>::from_dotos_block(block)?;
         Ok(DecodedWithSchema::new(
             value,
             InstanceSchema::scalar(Self::instance_reference()),
@@ -209,13 +209,13 @@ impl NotaDecodeTraced for crate::ByteSequence {
     }
 }
 
-impl<const WIDTH: usize> NotaDecodeTraced for crate::FixedByteSequence<WIDTH> {
+impl<const WIDTH: usize> DotosDecodeTraced for crate::FixedByteSequence<WIDTH> {
     fn instance_reference() -> TypeReference {
         TypeReference::FixedBytes(WIDTH)
     }
 
-    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
-        let value = <Self as NotaDecode>::from_nota_block(block)?;
+    fn from_dotos_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, DotosDecodeError> {
+        let value = <Self as DotosDecode>::from_dotos_block(block)?;
         Ok(DecodedWithSchema::new(
             value,
             InstanceSchema::scalar(Self::instance_reference()),
@@ -223,19 +223,19 @@ impl<const WIDTH: usize> NotaDecodeTraced for crate::FixedByteSequence<WIDTH> {
     }
 }
 
-impl<Element> NotaDecodeTraced for Vec<Element>
+impl<Element> DotosDecodeTraced for Vec<Element>
 where
-    Element: NotaDecodeTraced,
+    Element: DotosDecodeTraced,
 {
     fn instance_reference() -> TypeReference {
         TypeReference::vector(Element::instance_reference())
     }
 
-    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
-        // Mirror the blanket `NotaDecode for Vec` traversal: each element is
+    fn from_dotos_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, DotosDecodeError> {
+        // Mirror the blanket `DotosDecode for Vec` traversal: each element is
         // decoded against `Element`, and we keep the per-element schema node.
         let elements =
-            crate::NotaCollection::new(block).parse_vector(Element::from_nota_block_traced)?;
+            crate::DotosCollection::new(block).parse_vector(Element::from_dotos_block_traced)?;
         let mut values = Vec::with_capacity(elements.len());
         let mut nodes = Vec::with_capacity(elements.len());
         for decoded in elements {
@@ -253,17 +253,17 @@ where
     }
 }
 
-impl<Inner> NotaDecodeTraced for Option<Inner>
+impl<Inner> DotosDecodeTraced for Option<Inner>
 where
-    Inner: NotaDecodeTraced,
+    Inner: DotosDecodeTraced,
 {
     fn instance_reference() -> TypeReference {
         TypeReference::optional(Inner::instance_reference())
     }
 
-    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
+    fn from_dotos_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, DotosDecodeError> {
         let decoded =
-            crate::NotaCollection::new(block).parse_option(Inner::from_nota_block_traced)?;
+            crate::DotosCollection::new(block).parse_option(Inner::from_dotos_block_traced)?;
         match decoded {
             Some(inner) => {
                 let (value, schema) = inner.into_parts();
@@ -286,16 +286,16 @@ where
     }
 }
 
-impl<Key, Value> NotaDecodeTraced for std::collections::BTreeMap<Key, Value>
+impl<Key, Value> DotosDecodeTraced for std::collections::BTreeMap<Key, Value>
 where
-    Key: NotaDecodeTraced + Ord,
-    Value: NotaDecodeTraced,
+    Key: DotosDecodeTraced + Ord,
+    Value: DotosDecodeTraced,
 {
     fn instance_reference() -> TypeReference {
         TypeReference::map(Key::instance_reference(), Value::instance_reference())
     }
 
-    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
+    fn from_dotos_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, DotosDecodeError> {
         // We re-run the map traversal capturing both the value map and the
         // per-pair schema nodes. `parse_map` collects the value map; the
         // capture closures record the schema pairs in iteration order, sharing
@@ -303,15 +303,15 @@ where
         use std::cell::RefCell;
         let pair_nodes: RefCell<Vec<(InstanceSchema, InstanceSchema)>> = RefCell::new(Vec::new());
         let staged_key: RefCell<Option<InstanceSchema>> = RefCell::new(None);
-        let map = crate::NotaCollection::new(block).parse_map(
+        let map = crate::DotosCollection::new(block).parse_map(
             |key_block| {
-                let decoded = Key::from_nota_block_traced(key_block)?;
+                let decoded = Key::from_dotos_block_traced(key_block)?;
                 let (value, schema) = decoded.into_parts();
                 *staged_key.borrow_mut() = Some(schema);
                 Ok(value)
             },
             |value_block| {
-                let decoded = Value::from_nota_block_traced(value_block)?;
+                let decoded = Value::from_dotos_block_traced(value_block)?;
                 let (value, schema) = decoded.into_parts();
                 let key_schema = staged_key
                     .borrow_mut()
@@ -331,16 +331,16 @@ where
     }
 }
 
-impl<Inner> NotaDecodeTraced for Box<Inner>
+impl<Inner> DotosDecodeTraced for Box<Inner>
 where
-    Inner: NotaDecodeTraced,
+    Inner: DotosDecodeTraced,
 {
     fn instance_reference() -> TypeReference {
         Inner::instance_reference()
     }
 
-    fn from_nota_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, NotaDecodeError> {
-        let decoded = Inner::from_nota_block_traced(block)?;
+    fn from_dotos_block_traced(block: &Block) -> Result<DecodedWithSchema<Self>, DotosDecodeError> {
+        let decoded = Inner::from_dotos_block_traced(block)?;
         let (value, schema) = decoded.into_parts();
         Ok(DecodedWithSchema::new(Box::new(value), schema))
     }

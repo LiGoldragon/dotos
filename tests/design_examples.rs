@@ -1,7 +1,7 @@
-//! Design-illustrating tests for nota.
+//! Design-illustrating tests for dotos.
 //!
 //! Each test illustrates ONE load-bearing design point of the
-//! structural NOTA reader with a short fixture and a focused
+//! structural DOTOS reader with a short fixture and a focused
 //! assertion. Test names start with `design_example_` so a reader
 //! scanning the file knows which tests are for design representation
 //! vs broader coverage.
@@ -10,7 +10,7 @@
 //! When a design report cites a test, the test in this file should
 //! be the canonical example.
 
-use nota::{Document, StructureHeader, StructureShape};
+use dotos::{Document, StructureHeader, StructureShape};
 
 /// Illustrates: every Block carries a SourceSpan that maps back to
 /// the original text by byte offset AND line/column. The span
@@ -19,7 +19,7 @@ use nota::{Document, StructureHeader, StructureShape};
 /// approximation or a re-serialised form.
 ///
 /// Intent records 770 + 771 (Maximum / High): the object-block pass
-/// breaks NOTA text into delimiter-bounded blocks with source
+/// breaks DOTOS text into delimiter-bounded blocks with source
 /// locations; spans should track line and column directly rather
 /// than normalize root objects onto one line.
 ///
@@ -31,7 +31,7 @@ use nota::{Document, StructureHeader, StructureShape};
 fn design_example_source_spans_propagate_through_nested_blocks() {
     let source = r#"(Record
   [Entry])"#;
-    let document = Document::parse(source).expect("nota parses");
+    let document = Document::parse(source).expect("dotos parses");
     let outer = document.root_object_at(0).expect("outer parenthesis");
 
     let outer_span = outer.source_span();
@@ -57,11 +57,11 @@ fn design_example_source_spans_propagate_through_nested_blocks() {
 /// Illustrates: a bare PascalCase atom is `Block::Atom`, and the
 /// reader exposes it ONLY through `Block::atom()` — there is no
 /// `Block::is_pascal_case` factual method because PascalCase IS NOT
-/// a structural fact at the NOTA layer. The reader returns a
+/// a structural fact at the DOTOS layer. The reader returns a
 /// candidate predicate `qualifies_as_pascal_case_symbol`; the schema
 /// layer decides whether PascalCase is allowed at this position.
 ///
-/// Intent records 786 + 800 (Maximum): raw NOTA structural reading
+/// Intent records 786 + 800 (Maximum): raw DOTOS structural reading
 /// does not decide whether PascalCase is allowed for a final value
 /// type; case legality belongs to the schema or macro context. The
 /// distinction in classification methods is "qualifies as" not "is".
@@ -70,7 +70,7 @@ fn design_example_source_spans_propagate_through_nested_blocks() {
 /// asserting the absence of schema-level semantics in the reader API.
 #[test]
 fn design_example_reader_exposes_candidates_not_schema_semantics() {
-    let document = Document::parse("Decision").expect("nota parses");
+    let document = Document::parse("Decision").expect("dotos parses");
     let block = document.root_object_at(0).expect("first root");
 
     // Factual structural query — present.
@@ -100,7 +100,7 @@ fn design_example_reader_exposes_candidates_not_schema_semantics() {
 fn design_example_structure_header_captures_first_two_levels() {
     let source = r#"(Input ((Record Entry) Drop))
 (Output (Accepted))"#;
-    let document = Document::parse(source).expect("nota parses");
+    let document = Document::parse(source).expect("dotos parses");
     let header = document.structure_header();
     let observed: Vec<(StructureShape, u8)> = header
         .slots()
@@ -135,7 +135,7 @@ fn design_example_structure_header_captures_first_two_levels() {
 #[test]
 fn design_example_structure_header_marks_child_count_overflow() {
     let source = "(A B C D E F G H I J K L M N O P)";
-    let document = Document::parse(source).expect("nota parses");
+    let document = Document::parse(source).expect("dotos parses");
     let header = document.structure_header();
 
     let overflowed_slot = header.slots().get(1).expect("root object slot");
@@ -158,7 +158,7 @@ fn design_example_structure_header_marks_child_count_overflow() {
 #[test]
 fn design_example_structure_header_marks_slot_truncation() {
     let source = "A B C D E F G H I";
-    let document = Document::parse(source).expect("nota parses");
+    let document = Document::parse(source).expect("dotos parses");
     let header = document.structure_header();
 
     assert_eq!(header.slots().len(), StructureHeader::MAXIMUM_SLOTS);

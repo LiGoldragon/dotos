@@ -1,4 +1,4 @@
-//! Witnesses for the second-generation NOTA grammar (wave one).
+//! Witnesses for the second-generation DOTOS grammar (wave one).
 //!
 //! Each test proves one load-bearing rule of the revised grammar: the
 //! raw-layer dot-application binding, its right-associative chaining, the
@@ -9,14 +9,14 @@
 
 use std::collections::BTreeMap;
 
-use nota::{Document, NotaDecode, NotaEncode, NotaSource};
+use dotos::{Document, DotosDecode, DotosEncode, DotosSource};
 
 /// A glued period binds a head to the following payload as one application
 /// block; the head and payload are recovered structurally, not by splitting
 /// atom text.
 #[test]
 fn dot_binds_head_to_payload_as_one_application() {
-    let document = Document::parse("Variant.Data").expect("valid nota");
+    let document = Document::parse("Variant.Data").expect("valid dotos");
     assert_eq!(document.holds_root_objects(), 1, "one application block");
     let block = document.root_object_at(0).expect("root");
     let (head, payload) = block.as_application().expect("dot-application");
@@ -33,7 +33,7 @@ fn dot_binds_each_delimited_payload_kind() {
         ("Variant.[a b]", "square bracket"),
         ("Variant.{a b}", "brace"),
     ] {
-        let document = Document::parse(source).expect("valid nota");
+        let document = Document::parse(source).expect("valid dotos");
         let block = document.root_object_at(0).expect("root");
         let (head, payload) = block.as_application().expect("dot-application");
         assert_eq!(head.demote_to_string(), Some("Variant"), "{source}");
@@ -50,7 +50,7 @@ fn dot_binds_each_delimited_payload_kind() {
 /// as visibility, then the (name, type) remainder.
 #[test]
 fn dotted_chain_binds_right_associatively() {
-    let document = Document::parse("Private.secretDigest.StateDigest").expect("valid nota");
+    let document = Document::parse("Private.secretDigest.StateDigest").expect("valid dotos");
     let block = document.root_object_at(0).expect("root");
     let (visibility, remainder) = block.as_application().expect("outer application");
     assert_eq!(visibility.demote_to_string(), Some("Private"));
@@ -88,7 +88,7 @@ fn a_period_binds_only_when_glued_on_both_sides() {
 /// the application's segments rather than read as a single atom.
 #[test]
 fn a_dotted_path_reconstructs_its_flat_text() {
-    let document = Document::parse("rustfmt.skip").expect("valid nota");
+    let document = Document::parse("rustfmt.skip").expect("valid dotos");
     let block = document.root_object_at(0).expect("root");
     assert!(block.is_application(), "rustfmt.skip is an application");
     assert_eq!(
@@ -104,13 +104,13 @@ fn a_dotted_path_reconstructs_its_flat_text() {
 /// the dotted text. The scalar still round-trips to its canonical form.
 #[test]
 fn float_literal_round_trips_through_its_structural_period() {
-    let value = NotaSource::new("-122.3")
+    let value = DotosSource::new("-122.3")
         .parse::<f64>()
         .expect("float decodes");
     assert_eq!(value, -122.3);
-    assert_eq!((-122.3_f64).to_nota(), "-122.3");
+    assert_eq!((-122.3_f64).to_dotos(), "-122.3");
     assert_eq!(
-        NotaSource::new(&(-122.3_f64).to_nota())
+        DotosSource::new(&(-122.3_f64).to_dotos())
             .parse::<f64>()
             .expect("re-decodes"),
         -122.3
@@ -124,16 +124,16 @@ fn float_literal_round_trips_through_its_structural_period() {
 /// literal-preserving `(| … |)` multiline form.
 #[test]
 fn strings_reshuffle_to_bare_paren_and_pipe_paren_forms() {
-    assert_eq!("schema".to_owned().to_nota(), "schema");
-    assert_eq!("alpha beta".to_owned().to_nota(), "(alpha beta)");
-    assert_eq!("a.b".to_owned().to_nota(), "a.b");
-    assert_eq!("has (paren)".to_owned().to_nota(), "(|has (paren)|)");
-    assert_eq!("alpha;;beta".to_owned().to_nota(), "(|alpha;;beta|)");
+    assert_eq!("schema".to_owned().to_dotos(), "schema");
+    assert_eq!("alpha beta".to_owned().to_dotos(), "(alpha beta)");
+    assert_eq!("a.b".to_owned().to_dotos(), "a.b");
+    assert_eq!("has (paren)".to_owned().to_dotos(), "(|has (paren)|)");
+    assert_eq!("alpha;;beta".to_owned().to_dotos(), "(|alpha;;beta|)");
 
     for original in ["schema", "alpha beta", "a.b", "has (paren)", "alpha;;beta"] {
-        let encoded = original.to_owned().to_nota();
+        let encoded = original.to_owned().to_dotos();
         assert_eq!(
-            NotaSource::new(&encoded)
+            DotosSource::new(&encoded)
                 .parse::<String>()
                 .unwrap_or_else(|error| panic!("{original:?} → {encoded:?} decodes: {error}")),
             original,
@@ -146,7 +146,7 @@ fn strings_reshuffle_to_bare_paren_and_pipe_paren_forms() {
 /// written bare.
 #[test]
 fn redundant_string_parentheses_are_rejected() {
-    let error = NotaSource::new("(schema)")
+    let error = DotosSource::new("(schema)")
         .parse::<String>()
         .expect_err("redundant parentheses reject");
     assert!(
@@ -159,41 +159,41 @@ fn redundant_string_parentheses_are_rejected() {
 /// bare, `Some.payload` applied — and both round-trip.
 #[test]
 fn vectors_keep_brackets_and_options_are_dotted_variants() {
-    let vector = NotaSource::new("[alpha beta gamma]")
+    let vector = DotosSource::new("[alpha beta gamma]")
         .parse::<Vec<String>>()
         .expect("vector decodes");
     assert_eq!(vector, vec!["alpha", "beta", "gamma"]);
-    assert_eq!(vector.to_nota(), "[alpha beta gamma]");
+    assert_eq!(vector.to_dotos(), "[alpha beta gamma]");
 
-    let some = NotaSource::new("Some.(cache entry)")
+    let some = DotosSource::new("Some.(cache entry)")
         .parse::<Option<String>>()
         .expect("some decodes");
     assert_eq!(some, Some("cache entry".to_owned()));
-    assert_eq!(some.to_nota(), "Some.(cache entry)");
+    assert_eq!(some.to_dotos(), "Some.(cache entry)");
 
-    let some_bare = NotaSource::new("Some.42")
+    let some_bare = DotosSource::new("Some.42")
         .parse::<Option<u64>>()
         .expect("some integer decodes");
     assert_eq!(some_bare, Some(42));
-    assert_eq!(some_bare.to_nota(), "Some.42");
+    assert_eq!(some_bare.to_dotos(), "Some.42");
 
-    let none = NotaSource::new("None")
+    let none = DotosSource::new("None")
         .parse::<Option<String>>()
         .expect("none decodes");
     assert_eq!(none, None);
-    assert_eq!(none.to_nota(), "None");
+    assert_eq!(none.to_dotos(), "None");
 }
 
 /// A map has no delimiter of its own: it is a `Map`-headed application over a
 /// parenthesis payload of `key.Value` dotted entries, and it round-trips.
 #[test]
 fn maps_are_map_headed_applications_over_dotted_entries() {
-    let map = NotaSource::new("Map.(alpha.1 beta.2)")
+    let map = DotosSource::new("Map.(alpha.1 beta.2)")
         .parse::<BTreeMap<String, u64>>()
         .expect("map decodes");
     assert_eq!(map.get("alpha"), Some(&1));
     assert_eq!(map.get("beta"), Some(&2));
-    assert_eq!(map.to_nota(), "Map.(alpha.1 beta.2)");
+    assert_eq!(map.to_dotos(), "Map.(alpha.1 beta.2)");
 }
 
 /// The multiline pipe-string moves from `[| |]` to `(| |)`, and the close
@@ -201,13 +201,13 @@ fn maps_are_map_headed_applications_over_dotted_entries() {
 #[test]
 fn pipe_paren_multiline_string_round_trips_with_escapes() {
     let original = "line one\nline two with |) marker".to_owned();
-    let encoded = original.to_nota();
+    let encoded = original.to_dotos();
     assert!(
         encoded.starts_with("(|") && encoded.ends_with("|)"),
         "{encoded}"
     );
     assert_eq!(
-        NotaSource::new(&encoded)
+        DotosSource::new(&encoded)
             .parse::<String>()
             .expect("pipe-paren string decodes"),
         original
@@ -243,14 +243,14 @@ fn psyche_authored_newtype_sample_parses_with_intended_shape() {
     );
 }
 
-#[derive(Debug, PartialEq, Eq, nota::NotaEncode, nota::NotaDecode)]
+#[derive(Debug, PartialEq, Eq, dotos::DotosEncode, dotos::DotosDecode)]
 enum Signal {
     Idle,
     Tick(u64),
     Range(u64, u64),
 }
 
-#[derive(Debug, PartialEq, Eq, nota::NotaEncode, nota::NotaDecode)]
+#[derive(Debug, PartialEq, Eq, dotos::DotosEncode, dotos::DotosDecode)]
 struct Marker {
     label: String,
     count: u64,
@@ -266,9 +266,9 @@ fn derived_enum_uses_dotted_variants() {
         (Signal::Tick(7), "Tick.7"),
         (Signal::Range(3, 9), "Range.{3 9}"),
     ] {
-        assert_eq!(value.to_nota(), text, "encode {value:?}");
+        assert_eq!(value.to_dotos(), text, "encode {value:?}");
         assert_eq!(
-            Signal::from_nota_block(
+            Signal::from_dotos_block(
                 Document::parse(text)
                     .expect("parses")
                     .root_object_at(0)
@@ -289,8 +289,8 @@ fn derived_struct_body_is_a_brace_record() {
         label: "commit sequence".to_owned(),
         count: 4,
     };
-    assert_eq!(marker.to_nota(), "{(commit sequence) 4}");
-    let decoded = Marker::from_nota_block(
+    assert_eq!(marker.to_dotos(), "{(commit sequence) 4}");
+    let decoded = Marker::from_dotos_block(
         Document::parse("{(commit sequence) 4}")
             .expect("parses")
             .root_object_at(0)

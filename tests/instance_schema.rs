@@ -1,6 +1,6 @@
 //! Per-instance schema derive tests.
 //!
-//! These exercise `NotaDecodeTraced` on local types that model the shapes the
+//! These exercise `DotosDecodeTraced` on local types that model the shapes the
 //! spirit contract uses — a newtype over an enum (`Certainty`/`Magnitude`), a
 //! struct of newtypes (`Entry`), a recursive enum taxonomy
 //! (`Domain`/`Technology`/`Software`), and a root enum whose chosen variant
@@ -9,68 +9,68 @@
 //! position — proving the trace rides the same type-directed traversal that
 //! validates the value.
 
-use nota::{
-    InstanceSchema, InstanceSchemaBody, NotaDecode, NotaDecodeTraced, NotaSource, TypeReference,
+use dotos::{
+    DotosDecode, DotosDecodeTraced, DotosSource, InstanceSchema, InstanceSchemaBody, TypeReference,
 };
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 enum Magnitude {
     Zero,
     Low,
     High,
 }
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct Certainty(Magnitude);
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct Importance(Magnitude);
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct Privacy(Magnitude);
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 enum Kind {
     Decision,
     Principle,
     Constraint,
 }
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct Description(String);
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct Referent(String);
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct Referents(Vec<Referent>);
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 enum Programming {
     CodeGeneration,
     Parsing,
 }
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 enum Software {
     Programming(Programming),
     Theory,
 }
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 enum Technology {
     Software(Software),
 }
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 enum Domain {
     Technology(Technology),
 }
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct Domains(Vec<Domain>);
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct Entry {
     domains: Domains,
     kind: Kind,
@@ -81,15 +81,15 @@ struct Entry {
     referents: Referents,
 }
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct RecordRequest {
     entry: Entry,
 }
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 struct Record(RecordRequest);
 
-#[derive(Debug, PartialEq, Eq, NotaDecode, NotaDecodeTraced)]
+#[derive(Debug, PartialEq, Eq, DotosDecode, DotosDecodeTraced)]
 enum Input {
     Record(Record),
     Version,
@@ -97,12 +97,12 @@ enum Input {
 
 fn trace<Value>(source: &str) -> (Value, InstanceSchema)
 where
-    Value: NotaDecodeTraced,
+    Value: DotosDecodeTraced,
 {
-    let block = NotaSource::new(source)
+    let block = DotosSource::new(source)
         .parse_root()
         .expect("parse a single root object");
-    Value::from_nota_block_traced(&block)
+    Value::from_dotos_block_traced(&block)
         .expect("decode value and capture its instance schema")
         .into_parts()
 }
@@ -260,15 +260,15 @@ fn unit_root_variant_is_a_scalar_terminal() {
 
 #[test]
 fn traced_value_matches_ordinary_decode() {
-    // The traced decoder must agree with the ordinary NotaDecode on the value.
+    // The traced decoder must agree with the ordinary DotosDecode on the value.
     let source = "Technology.Software.Theory";
     let traced = {
-        let block = NotaSource::new(source).parse_root().expect("parse root");
-        Domain::from_nota_block_traced(&block)
+        let block = DotosSource::new(source).parse_root().expect("parse root");
+        Domain::from_dotos_block_traced(&block)
             .expect("traced decode")
             .into_value()
     };
-    let ordinary = NotaSource::new(source)
+    let ordinary = DotosSource::new(source)
         .parse::<Domain>()
         .expect("ordinary decode");
     assert_eq!(traced, ordinary);

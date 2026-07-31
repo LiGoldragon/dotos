@@ -20,7 +20,7 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn parse(source: impl Into<String>) -> Result<Self, NotaError> {
+    pub fn parse(source: impl Into<String>) -> Result<Self, DotosError> {
         let source = source.into();
         let mut parser = Parser::new(&source);
         let root_objects = parser.parse_document()?;
@@ -615,7 +615,7 @@ impl Atom {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum NotaError {
+pub enum DotosError {
     UnexpectedClose {
         found: char,
         position: SourcePosition,
@@ -642,7 +642,7 @@ pub enum NotaError {
     },
 }
 
-impl fmt::Display for NotaError {
+impl fmt::Display for DotosError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnexpectedClose { found, position } => write!(
@@ -679,7 +679,7 @@ impl fmt::Display for NotaError {
     }
 }
 
-impl std::error::Error for NotaError {}
+impl std::error::Error for DotosError {}
 
 struct Parser<'source> {
     source: &'source str,
@@ -694,7 +694,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_document(&mut self) -> Result<Vec<Block>, NotaError> {
+    fn parse_document(&mut self) -> Result<Vec<Block>, DotosError> {
         let mut root_objects = Vec::new();
         loop {
             self.skip_spacing();
@@ -702,7 +702,7 @@ impl<'source> Parser<'source> {
                 return Ok(root_objects);
             };
             if Delimiter::from_closing(character).is_some() {
-                return Err(NotaError::UnexpectedClose {
+                return Err(DotosError::UnexpectedClose {
                     found: character,
                     position: self.cursor.position(),
                 });
@@ -721,7 +721,7 @@ impl<'source> Parser<'source> {
     /// it is glued to both its head and its payload; a period followed by
     /// whitespace, a comment, a closing delimiter, or the end of input is a
     /// dangling application error.
-    fn parse_object(&mut self) -> Result<Block, NotaError> {
+    fn parse_object(&mut self) -> Result<Block, DotosError> {
         let head = self.parse_primary()?;
         if self.peek() != Some('.') {
             return Ok(head);
@@ -729,7 +729,7 @@ impl<'source> Parser<'source> {
         let dot = self.cursor.position();
         self.bump();
         if !self.at_primary_start() {
-            return Err(NotaError::DanglingApplication { position: dot });
+            return Err(DotosError::DanglingApplication { position: dot });
         }
         let payload = self.parse_object()?;
         let span = SourceSpan {
@@ -747,13 +747,13 @@ impl<'source> Parser<'source> {
     /// a bare atom. A primary never consumes a trailing dot-application; that
     /// binding is [`parse_object`]'s job. A leading period has no head object
     /// and is rejected.
-    fn parse_primary(&mut self) -> Result<Block, NotaError> {
+    fn parse_primary(&mut self) -> Result<Block, DotosError> {
         match self.peek() {
             Some('(') if self.peek_next() == Some('|') => self.parse_pipe_text(),
             Some('(') => self.parse_delimited(Delimiter::Parenthesis),
             Some('[') => self.parse_delimited(Delimiter::SquareBracket),
             Some('{') => self.parse_delimited(Delimiter::Brace),
-            Some('.') => Err(NotaError::UnexpectedDot {
+            Some('.') => Err(DotosError::UnexpectedDot {
                 position: self.cursor.position(),
             }),
             // A misplaced pipe-close (`|)`) at an object position would make
@@ -761,7 +761,7 @@ impl<'source> Parser<'source> {
             // enclosing loop would then spin forever, growing the block vector
             // until it exhausts memory. Reject it so the parser always makes
             // progress on malformed input.
-            Some('|') if self.at_pipe_delimiter_close() => Err(NotaError::UnexpectedClose {
+            Some('|') if self.at_pipe_delimiter_close() => Err(DotosError::UnexpectedClose {
                 found: self.peek_next().unwrap_or('|'),
                 position: self.cursor.position(),
             }),
@@ -784,14 +784,14 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_delimited(&mut self, delimiter: Delimiter) -> Result<Block, NotaError> {
+    fn parse_delimited(&mut self, delimiter: Delimiter) -> Result<Block, DotosError> {
         let start = self.cursor.position();
         self.bump();
         let mut root_objects = Vec::new();
         loop {
             self.skip_spacing();
             let Some(character) = self.peek() else {
-                return Err(NotaError::UnclosedDelimiter {
+                return Err(DotosError::UnclosedDelimiter {
                     delimiter,
                     position: start,
                 });
@@ -806,7 +806,7 @@ impl<'source> Parser<'source> {
                 });
             }
             if Delimiter::from_closing(character).is_some() {
-                return Err(NotaError::UnexpectedClose {
+                return Err(DotosError::UnexpectedClose {
                     found: character,
                     position: self.cursor.position(),
                 });
@@ -815,7 +815,7 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_pipe_text(&mut self) -> Result<Block, NotaError> {
+    fn parse_pipe_text(&mut self) -> Result<Block, DotosError> {
         let start = self.cursor.position();
         self.bump();
         self.bump();
@@ -842,7 +842,7 @@ impl<'source> Parser<'source> {
                 self.bump();
             }
         }
-        Err(NotaError::UnclosedPipeText { position: start })
+        Err(DotosError::UnclosedPipeText { position: start })
     }
 
     fn parse_atom(&mut self) -> Block {

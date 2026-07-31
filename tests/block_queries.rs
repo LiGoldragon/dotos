@@ -1,9 +1,9 @@
-use nota::{Delimiter, Document, NotaError};
+use dotos::{Delimiter, Document, DotosError};
 
 #[test]
 fn parses_ordered_root_objects_and_reemits_from_spans() {
     let source = "(State [Statement]) { Topic [Text] }";
-    let document = Document::parse(source).expect("valid nota");
+    let document = Document::parse(source).expect("valid dotos");
 
     assert_eq!(document.holds_root_objects(), 2);
     let first = document.root_object_at(0).expect("first root");
@@ -17,7 +17,7 @@ fn parses_ordered_root_objects_and_reemits_from_spans() {
 
 #[test]
 fn exposes_recursive_shape_predicates() {
-    let document = Document::parse("(Record [Entry Query])").expect("valid nota");
+    let document = Document::parse("(Record [Entry Query])").expect("valid dotos");
     let root = document.root_object_at(0).expect("root");
 
     assert!(root.is_parenthesis());
@@ -33,7 +33,7 @@ fn exposes_recursive_shape_predicates() {
 
 #[test]
 fn exposes_delimiter_text_and_child_helpers() {
-    let document = Document::parse("[alpha beta]").expect("valid nota");
+    let document = Document::parse("[alpha beta]").expect("valid dotos");
     let root = document.root_object_at(0).expect("root");
 
     assert_eq!(Delimiter::SquareBracket.opening_text(), "[");
@@ -57,7 +57,7 @@ fn exposes_structural_candidates_without_content_classification() {
     let document = Document::parse(
         "TypeName field-name camelName schema:module:Type CustomMacro RecordPayload 42 7.5 name@host required* a&b score^2 100% x>y x<y path/to a;b",
     )
-    .expect("valid nota");
+    .expect("valid dotos");
     let roots = document.root_objects();
 
     // Case-shaped structural candidate predicates are answered on demand from
@@ -105,7 +105,7 @@ fn exposes_structural_candidates_without_content_classification() {
 fn double_semicolon_is_comment_and_single_semicolon_is_atom_text() {
     let source = r#"alpha;beta ;; comment text
  gamma;; trailing comment"#;
-    let document = Document::parse(source).expect("valid nota");
+    let document = Document::parse(source).expect("valid dotos");
     let roots = document.root_objects();
 
     assert_eq!(roots.len(), 2);
@@ -116,7 +116,7 @@ fn double_semicolon_is_comment_and_single_semicolon_is_atom_text() {
 #[test]
 fn pipe_text_is_delimiter_safe_and_not_recursively_parsed() {
     let source = "(|macro body with ] and \" and apostrophe's text|)";
-    let document = Document::parse(source).expect("valid nota");
+    let document = Document::parse(source).expect("valid dotos");
     let root = document.root_object_at(0).expect("root");
 
     assert!(root.is_pipe_text());
@@ -130,7 +130,7 @@ fn pipe_text_is_delimiter_safe_and_not_recursively_parsed() {
 #[test]
 fn pipe_text_escapes_single_pipe_close_marker() {
     let source = "(|macro body can contain \\|) without ending|)";
-    let document = Document::parse(source).expect("valid nota");
+    let document = Document::parse(source).expect("valid dotos");
     let root = document.root_object_at(0).expect("root");
 
     assert!(root.is_pipe_text());
@@ -143,11 +143,11 @@ fn pipe_text_escapes_single_pipe_close_marker() {
 
 #[test]
 fn reports_unclosed_delimiters_with_source_position() {
-    let error = Document::parse("(Record [Entry]").expect_err("invalid nota");
+    let error = Document::parse("(Record [Entry]").expect_err("invalid dotos");
 
     assert!(matches!(
         error,
-        NotaError::UnclosedDelimiter {
+        DotosError::UnclosedDelimiter {
             position,
             ..
         } if position.line == 1 && position.column == 1

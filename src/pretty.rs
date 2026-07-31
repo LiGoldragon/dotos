@@ -1,13 +1,13 @@
-//! Deterministic readability projection for NOTA documents.
+//! Deterministic readability projection for DOTOS documents.
 //!
-//! The canonical NOTA encoders emit a document on a single line. That form is
+//! The canonical DOTOS encoders emit a document on a single line. That form is
 //! byte-stable and quotation-safe, but a large document is hard for a person to
 //! read. [`PrettyLayout`] is an additive projection that reflows the same
 //! document across indented lines without changing the canonical encoding.
 //!
 //! The projection is a pure reformatting. Every leaf — an atom or a pipe-text
 //! block — re-emits the exact source bytes it was parsed from, and the layout
-//! only adds whitespace between structural delimiters. NOTA treats whitespace
+//! only adds whitespace between structural delimiters. DOTOS treats whitespace
 //! as an object separator that is skipped adjacent to delimiters, so pretty
 //! output always re-parses to the same block tree as its source. The layout
 //! therefore never touches atom content, string escaping, or delimiter shape;
@@ -20,12 +20,12 @@
 //! when its single-line form would not fit the line width at its indentation,
 //! and indent one step per delimiter depth.
 
-use crate::{Block, Delimiter, Document, NotaError};
+use crate::{Block, Delimiter, Document, DotosError};
 
-/// How a component CLI writes a canonical NOTA reply to its output.
+/// How a component CLI writes a canonical DOTOS reply to its output.
 ///
-/// Every NOTA-printing CLI shares one print shape: it encodes a typed reply to
-/// a canonical single line and writes it. `NotaOutputForm` is the one place that
+/// Every DOTOS-printing CLI shares one print shape: it encodes a typed reply to
+/// a canonical single line and writes it. `DotosOutputForm` is the one place that
 /// decides whether that line is written as-is or reflowed for reading, so each
 /// print site stays a single call and the pretty decision is not re-derived at
 /// every site. The default `Canonical` form is byte-identical to the bare
@@ -33,12 +33,12 @@ use crate::{Block, Delimiter, Document, NotaError};
 /// the caller passed `--pretty`, reflows the same document through
 /// [`PrettyLayout`] and re-parses to the identical document.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NotaOutputForm {
+pub enum DotosOutputForm {
     Canonical,
     Pretty,
 }
 
-impl NotaOutputForm {
+impl DotosOutputForm {
     /// The output form a CLI should use given whether `--pretty` was requested.
     pub fn from_pretty_requested(pretty_requested: bool) -> Self {
         if pretty_requested {
@@ -48,7 +48,7 @@ impl NotaOutputForm {
         }
     }
 
-    /// Project an already-encoded canonical NOTA line into the chosen form.
+    /// Project an already-encoded canonical DOTOS line into the chosen form.
     ///
     /// A canonical encoder line always re-parses, so the pretty projection
     /// cannot fail in practice; if a caller ever passes text that does not
@@ -57,13 +57,13 @@ impl NotaOutputForm {
         match self {
             Self::Canonical => canonical.to_owned(),
             Self::Pretty => PrettyLayout::standard()
-                .render_nota(canonical)
+                .render_dotos(canonical)
                 .unwrap_or_else(|_| canonical.to_owned()),
         }
     }
 }
 
-/// A deterministic readability layout for NOTA documents.
+/// A deterministic readability layout for DOTOS documents.
 ///
 /// The layout carries the two policy values that drive every break decision:
 /// the target `line_width` a single-line form must fit within, and the
@@ -97,11 +97,11 @@ impl PrettyLayout {
         }
     }
 
-    /// Parse `source` as a NOTA document and render its readable projection.
+    /// Parse `source` as a DOTOS document and render its readable projection.
     ///
-    /// This is the entry point for a CLI that holds an already-encoded NOTA
+    /// This is the entry point for a CLI that holds an already-encoded DOTOS
     /// string and wants the same document reflowed for reading.
-    pub fn render_nota(&self, source: &str) -> Result<String, NotaError> {
+    pub fn render_dotos(&self, source: &str) -> Result<String, DotosError> {
         let document = Document::parse(source)?;
         Ok(self.render_document(&document))
     }
@@ -163,7 +163,7 @@ impl PrettyLayout {
     /// whitespace. Source-adjacent children — a dotted-prefix head `key.` glued
     /// to its value block, or a capitalized application head `Head.` glued to its
     /// argument group — stay on one line with no separator, exactly as canonical
-    /// NOTA writes them. Respecting the source's own token adjacency keeps the
+    /// DOTOS writes them. Respecting the source's own token adjacency keeps the
     /// layout content-free: it never asks what a dotted pair means, only where
     /// the source placed a separator.
     fn render_broken(
@@ -241,7 +241,7 @@ impl Block {
 
     /// Whether this block ends exactly where `next` begins, with no source text
     /// between them. Source-adjacent siblings carry no separator in canonical
-    /// NOTA — a dotted-prefix head `key.` glued to its value block, or a
+    /// DOTOS — a dotted-prefix head `key.` glued to its value block, or a
     /// capitalized application head `Head.` glued to its argument group — so the
     /// readability layout keeps them on one line without inventing a space.
     fn immediately_precedes(&self, next: &Block) -> bool {

@@ -8,7 +8,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use nota::Document;
+use dotos::Document;
 
 fn parse_terminates(input: &str) -> bool {
     let owned = input.to_string();

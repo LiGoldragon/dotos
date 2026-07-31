@@ -1,13 +1,13 @@
 use std::{collections::BTreeMap, fmt};
 
-use crate::{Atom, Block, Delimiter, NotaBody};
+use crate::{Atom, Block, Delimiter, DotosBody};
 
 #[derive(
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -31,8 +31,8 @@ impl CaptureName {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Copy,
     Debug,
@@ -74,8 +74,8 @@ impl MacroDelimiter {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -105,8 +105,8 @@ impl PositionPredicate {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -226,8 +226,8 @@ impl BlockShape {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -300,8 +300,8 @@ impl Pattern {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -421,8 +421,8 @@ impl StructuralVariantSet {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -530,8 +530,8 @@ impl PatternElement {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -609,8 +609,8 @@ impl AtomShape {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Copy,
     Debug,
@@ -639,8 +639,8 @@ impl AtomCase {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -683,8 +683,8 @@ impl SigilSpec {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Copy,
     Debug,
@@ -700,8 +700,8 @@ pub enum SigilPosition {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -767,7 +767,7 @@ impl DelimitedShape {
         if let Some(capture_name) = &self.capture {
             captures.insert(
                 capture_name.clone(),
-                CapturedValue::Body(NotaBody::new(block.root_objects())),
+                CapturedValue::Body(DotosBody::new(block.root_objects())),
             );
         }
         Some(())
@@ -835,8 +835,8 @@ impl<'shape> ParenthesizedHeadShape<'shape> {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     Clone,
     Debug,
     Eq,
@@ -928,7 +928,7 @@ impl<'block> MacroMatch<'block> {
         self.capture(name).and_then(CapturedValue::block)
     }
 
-    pub fn body_capture(&self, name: &CaptureName) -> Option<&NotaBody<'block>> {
+    pub fn body_capture(&self, name: &CaptureName) -> Option<&DotosBody<'block>> {
         self.capture(name).and_then(CapturedValue::body)
     }
 }
@@ -972,7 +972,7 @@ impl Default for MacroCaptures<'_> {
 pub enum CapturedValue<'block> {
     Block(&'block Block),
     Blocks(Vec<&'block Block>),
-    Body(NotaBody<'block>),
+    Body(DotosBody<'block>),
 }
 
 impl<'block> CapturedValue<'block> {
@@ -983,7 +983,7 @@ impl<'block> CapturedValue<'block> {
         }
     }
 
-    pub fn body(&self) -> Option<&NotaBody<'block>> {
+    pub fn body(&self) -> Option<&DotosBody<'block>> {
         match self {
             Self::Body(body) => Some(body),
             Self::Block(_) | Self::Blocks(_) => None,
@@ -1063,9 +1063,9 @@ pub trait StructuralMacroNode: Sized {
 
     fn structural_variants() -> Vec<StructuralVariant>;
 
-    fn to_structural_nota(&self) -> String;
+    fn to_structural_dotos(&self) -> String;
 
-    fn from_structural_nota(source: &str) -> Result<Self, StructuralMacroError<Self::Error>> {
+    fn from_structural_dotos(source: &str) -> Result<Self, StructuralMacroError<Self::Error>> {
         let document =
             crate::Document::parse(source).map_err(|error| StructuralMacroError::Parse {
                 error: error.to_string(),
@@ -1113,8 +1113,8 @@ where
         Inner::structural_variants()
     }
 
-    fn to_structural_nota(&self) -> String {
-        self.as_ref().to_structural_nota()
+    fn to_structural_dotos(&self) -> String {
+        self.as_ref().to_structural_dotos()
     }
 
     fn from_structural_candidate(
@@ -1141,9 +1141,9 @@ where
         Item::structural_variants()
     }
 
-    fn to_structural_nota(&self) -> String {
+    fn to_structural_dotos(&self) -> String {
         self.iter()
-            .map(Item::to_structural_nota)
+            .map(Item::to_structural_dotos)
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -1240,7 +1240,7 @@ where
             Self::ExpectedSingleRoot { found } => {
                 write!(
                     formatter,
-                    "expected exactly one NOTA root object, found {found}"
+                    "expected exactly one DOTOS root object, found {found}"
                 )
             }
             Self::Dispatch(error) => write!(formatter, "{error}"),

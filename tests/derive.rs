@@ -1,38 +1,38 @@
 use std::collections::BTreeMap;
 
-use nota::{
-    Block, Delimiter, Document, NotaDecode, NotaDecodeError, NotaDocumentEncode, NotaEncode,
-    NotaNamedDocumentFieldDecode, NotaNamedDocumentFieldEncode, NotaSource,
+use dotos::{
+    Block, Delimiter, Document, DotosDecode, DotosDecodeError, DotosDocumentEncode, DotosEncode,
+    DotosNamedDocumentFieldDecode, DotosNamedDocumentFieldEncode, DotosSource,
 };
 
-#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, Ord, PartialEq, PartialOrd)]
 struct Topic(String);
 
 /// A two-deep newtype chain that ultimately resolves to a `String` inner type.
 /// Each derived newtype layer delegates straight to its inner type's codec, so
 /// the whole chain accepts and re-emits whatever an expected `String` does — a
 /// dotted bare block included, through arbitrarily many wrappers.
-#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+#[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
 struct HostLabel(String);
 
-#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+#[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
 struct HostName(HostLabel);
 
-#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+#[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
 struct Entry {
     topic: Topic,
     description: String,
     magnitude: u64,
 }
 
-#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+#[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
 enum Request {
     Record(Entry),
     Observe(Topic),
     Ping,
 }
 
-#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+#[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
 enum TypeReference {
     String,
     Plain(String),
@@ -40,47 +40,47 @@ enum TypeReference {
     Optional(Box<Self>),
 }
 
-#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+#[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
 struct TopicMap {
     entries: BTreeMap<Topic, Entry>,
 }
 
-#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+#[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
 struct NamedVariants {
     name: String,
     variants: Vec<String>,
 }
 
-impl NotaNamedDocumentFieldDecode for NamedVariants {
-    fn from_nota_named_document_field(
+impl DotosNamedDocumentFieldDecode for NamedVariants {
+    fn from_dotos_named_document_field(
         name: &'static str,
         block: &Block,
-    ) -> Result<Self, NotaDecodeError> {
+    ) -> Result<Self, DotosDecodeError> {
         Ok(Self {
             name: name.to_owned(),
-            variants: Vec::<String>::from_nota_block(block)?,
+            variants: Vec::<String>::from_dotos_block(block)?,
         })
     }
 }
 
-impl NotaNamedDocumentFieldEncode for NamedVariants {
-    fn to_nota_named_document_field_body(&self) -> String {
-        self.variants.to_nota()
+impl DotosNamedDocumentFieldEncode for NamedVariants {
+    fn to_dotos_named_document_field_body(&self) -> String {
+        self.variants.to_dotos()
     }
 }
 
-#[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
-#[nota(known_root)]
+#[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
+#[dotos(known_root)]
 struct KnownRootDocument {
     name: String,
     imports: Vec<String>,
-    #[nota(name = "Input")]
+    #[dotos(name = "Input")]
     input: NamedVariants,
 }
 
 #[test]
 fn derive_reads_and_writes_record_shapes() {
-    let source = NotaSource::new("{schema (derive works) 7}");
+    let source = DotosSource::new("{schema (derive works) 7}");
     let entry = source.parse::<Entry>().expect("entry decodes");
 
     assert_eq!(
@@ -91,12 +91,12 @@ fn derive_reads_and_writes_record_shapes() {
             magnitude: 7,
         }
     );
-    assert_eq!(entry.to_nota(), "{schema (derive works) 7}");
+    assert_eq!(entry.to_dotos(), "{schema (derive works) 7}");
 }
 
 #[test]
 fn derive_newtype_chain_over_string_accepts_and_rewrites_dotted_bare_content() {
-    let host = NotaSource::new("nix.prometheus.goldragon.criome")
+    let host = DotosSource::new("nix.prometheus.goldragon.criome")
         .parse::<HostName>()
         .expect("two-deep newtype chain decodes a dotted bare string");
 
@@ -104,27 +104,27 @@ fn derive_newtype_chain_over_string_accepts_and_rewrites_dotted_bare_content() {
         host,
         HostName(HostLabel(String::from("nix.prometheus.goldragon.criome")))
     );
-    assert_eq!(host.to_nota(), "nix.prometheus.goldragon.criome");
+    assert_eq!(host.to_dotos(), "nix.prometheus.goldragon.criome");
 }
 
 #[test]
 fn derive_reads_and_writes_enum_shapes() {
-    let record = NotaSource::new("Record.{schema (derive works) 7}")
+    let record = DotosSource::new("Record.{schema (derive works) 7}")
         .parse::<Request>()
         .expect("record request decodes");
-    let ping = NotaSource::new("Ping")
+    let ping = DotosSource::new("Ping")
         .parse::<Request>()
         .expect("unit request decodes");
 
     assert!(matches!(record, Request::Record(_)));
-    assert_eq!(record.to_nota(), "Record.{schema (derive works) 7}");
+    assert_eq!(record.to_dotos(), "Record.{schema (derive works) 7}");
     assert_eq!(ping, Request::Ping);
-    assert_eq!(ping.to_nota(), "Ping");
+    assert_eq!(ping.to_dotos(), "Ping");
 }
 
 #[test]
 fn derive_reads_and_writes_multi_field_enum_payloads() {
-    let reference = NotaSource::new("Map.{String Optional.Plain.Entry}")
+    let reference = DotosSource::new("Map.{String Optional.Plain.Entry}")
         .parse::<TypeReference>()
         .expect("multi-field enum variant decodes");
 
@@ -137,12 +137,12 @@ fn derive_reads_and_writes_multi_field_enum_payloads() {
             )))),
         )
     );
-    assert_eq!(reference.to_nota(), "Map.{String Optional.Plain.Entry}");
+    assert_eq!(reference.to_dotos(), "Map.{String Optional.Plain.Entry}");
 }
 
 #[test]
 fn derive_rejects_multi_field_enum_payloads_with_wrong_tuple_size() {
-    let error = NotaSource::new("Map.{String}")
+    let error = DotosSource::new("Map.{String}")
         .parse::<TypeReference>()
         .expect_err("multi-field enum variant requires its tuple payload");
 
@@ -156,28 +156,28 @@ fn derive_rejects_multi_field_enum_payloads_with_wrong_tuple_size() {
 
 #[test]
 fn derive_uses_shared_collection_codec() {
-    let source = NotaSource::new("{Map.(alpha.{alpha first 1} beta.{beta second 2})}");
+    let source = DotosSource::new("{Map.(alpha.{alpha first 1} beta.{beta second 2})}");
     let entries = source
         .parse::<TopicMap>()
         .expect("map-backed record decodes");
 
     assert_eq!(entries.entries.len(), 2);
     assert_eq!(
-        entries.to_nota(),
+        entries.to_dotos(),
         "{Map.(alpha.{alpha first 1} beta.{beta second 2})}"
     );
 }
 
 #[test]
 fn derive_reads_and_writes_known_root_document_bodies() {
-    let source = NotaSource::new("schema\n[]\n[Record Observe]");
+    let source = DotosSource::new("schema\n[]\n[Record Observe]");
     let document = source
         .parse_document_body::<KnownRootDocument>()
         .expect("known-root body decodes");
     let body_document = source
         .parse_body::<KnownRootDocument>()
         .expect("known-root body decodes through semantic body API");
-    let object = NotaSource::new("{schema [] [Record Observe]}")
+    let object = DotosSource::new("{schema [] [Record Observe]}")
         .parse::<KnownRootDocument>()
         .expect("brace object body decodes");
 
@@ -187,7 +187,7 @@ fn derive_reads_and_writes_known_root_document_bodies() {
     assert_eq!(document, body_document);
     assert_eq!(document, object);
     assert_eq!(
-        document.to_nota_document_body().to_nota(),
+        document.to_dotos_document_body().to_dotos(),
         "schema\n[]\n[Record Observe]"
     );
 }
@@ -233,7 +233,7 @@ fn derive_body_parser_validates_field_count() {
 }
 
 mod local_result_alias {
-    use nota::{NotaDecode, NotaEncode, NotaSource};
+    use dotos::{DotosDecode, DotosEncode, DotosSource};
 
     type Result<Value> = std::result::Result<Value, String>;
 
@@ -241,13 +241,13 @@ mod local_result_alias {
         Ok(())
     }
 
-    #[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+    #[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
     struct AliasedRecord {
         name: String,
         count: u16,
     }
 
-    #[derive(Clone, Debug, Eq, NotaDecode, NotaEncode, PartialEq)]
+    #[derive(Clone, Debug, Eq, DotosDecode, DotosEncode, PartialEq)]
     enum AliasedRequest {
         Ping,
         Record(AliasedRecord),
@@ -256,10 +256,10 @@ mod local_result_alias {
     #[test]
     fn derive_generated_code_ignores_local_result_alias() {
         local_alias_is_in_scope().expect("local alias helper returns");
-        let record = NotaSource::new("{schema 7}")
+        let record = DotosSource::new("{schema 7}")
             .parse::<AliasedRecord>()
             .expect("record decodes despite local Result alias");
-        let request = NotaSource::new("Record.{schema 7}")
+        let request = DotosSource::new("Record.{schema 7}")
             .parse::<AliasedRequest>()
             .expect("enum decodes despite local Result alias");
 
@@ -271,6 +271,6 @@ mod local_result_alias {
             }
         );
         assert_eq!(request, AliasedRequest::Record(record));
-        assert_eq!(AliasedRequest::Ping.to_nota(), "Ping");
+        assert_eq!(AliasedRequest::Ping.to_dotos(), "Ping");
     }
 }

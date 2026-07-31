@@ -1,6 +1,6 @@
 //! Expectation-driven dotted-prefix reading.
 //!
-//! NOTA is strictly typed and positional, so the expected type is known at
+//! DOTOS is strictly typed and positional, so the expected type is known at
 //! every position and the reader advances by mode. A dotted prefix — a leading
 //! atom split at its first period into a prefix and a value — is read only in
 //! the two modes that expect one; in every other mode a period is ordinary atom
@@ -8,7 +8,7 @@
 //! downstream readers (schema-language above all) reuse it rather than
 //! hand-rolling their own dotted-prefix reading.
 
-use crate::codec::NotaDecodeError;
+use crate::codec::DotosDecodeError;
 use crate::parser::{Atom, Block};
 
 /// The two positions at which a reader may split a dotted prefix off a leading
@@ -53,21 +53,23 @@ impl DottedExpectation {
     /// exactly one application block, so exactly one block is consumed; the
     /// former inline-versus-following-block split no longer exists now that the
     /// raw parser binds the period.
-    pub fn read_entry(self, blocks: &[Block]) -> Result<DottedEntry, NotaDecodeError> {
-        let block = blocks.first().ok_or(NotaDecodeError::ExpectedDottedEntry {
-            expectation: self.description(),
-        })?;
+    pub fn read_entry(self, blocks: &[Block]) -> Result<DottedEntry, DotosDecodeError> {
+        let block = blocks
+            .first()
+            .ok_or(DotosDecodeError::ExpectedDottedEntry {
+                expectation: self.description(),
+            })?;
         let (head, payload) =
             block
                 .as_application()
-                .ok_or(NotaDecodeError::ExpectedDottedEntry {
+                .ok_or(DotosDecodeError::ExpectedDottedEntry {
                     expectation: self.description(),
                 })?;
-        let key_atom = head.atom().ok_or(NotaDecodeError::ExpectedDottedEntry {
+        let key_atom = head.atom().ok_or(DotosDecodeError::ExpectedDottedEntry {
             expectation: self.description(),
         })?;
         if !self.accepts_head(key_atom.text()) {
-            return Err(NotaDecodeError::DottedEntryCaseMismatch {
+            return Err(DotosDecodeError::DottedEntryCaseMismatch {
                 expectation: self.description(),
                 prefix: key_atom.text().to_owned(),
             });
@@ -92,18 +94,18 @@ impl DottedExpectation {
     /// supply it; a string that ends at the period is a missing value. Meaning
     /// is still expectation-driven: the caller declares the kind and nothing
     /// scans the text to decide it.
-    pub fn read_string_entry(self, text: &str) -> Result<(&str, &str), NotaDecodeError> {
+    pub fn read_string_entry(self, text: &str) -> Result<(&str, &str), DotosDecodeError> {
         let (prefix, remainder) =
-            Atom::split_text_at_first_dot(text).ok_or(NotaDecodeError::ExpectedDottedEntry {
+            Atom::split_text_at_first_dot(text).ok_or(DotosDecodeError::ExpectedDottedEntry {
                 expectation: self.description(),
             })?;
         if !self.accepts_head(prefix) {
-            return Err(NotaDecodeError::DottedEntryCaseMismatch {
+            return Err(DotosDecodeError::DottedEntryCaseMismatch {
                 expectation: self.description(),
                 prefix: prefix.to_owned(),
             });
         }
-        let value = remainder.ok_or(NotaDecodeError::DottedEntryMissingValue {
+        let value = remainder.ok_or(DotosDecodeError::DottedEntryMissingValue {
             expectation: self.description(),
         })?;
         Ok((prefix, value))

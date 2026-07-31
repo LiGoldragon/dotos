@@ -1,11 +1,11 @@
 [package]
-name         = "nota-derive"
-version      = "0.4.0"
+name         = "dotos-derive"
+version      = "0.5.0"
 edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
-repository   = "https://github.com/LiGoldragon/nota"
-description  = "Proc-macro derives for nota value codecs."
+repository   = "https://github.com/LiGoldragon/dotos"
+description  = "Proc-macro derives for dotos value codecs."
 publish      = false
 
 [lib]

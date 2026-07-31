@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
-use nota::{Document, DottedExpectation, NotaDecodeError, NotaEncode, NotaSource};
+use dotos::{Document, DotosDecodeError, DotosEncode, DotosSource, DottedExpectation};
 
 #[test]
 fn uncapitalized_reads_inline_value_and_consumes_one_block() {
-    let document = Document::parse("alpha.1").expect("valid nota");
+    let document = Document::parse("alpha.1").expect("valid dotos");
     let entry = DottedExpectation::Uncapitalized
         .read_entry(document.root_objects())
         .expect("dotted entry reads");
@@ -16,7 +16,7 @@ fn uncapitalized_reads_inline_value_and_consumes_one_block() {
 
 #[test]
 fn uncapitalized_reads_a_delimited_payload_value_from_one_application() {
-    let document = Document::parse("alpha.(inner value)").expect("valid nota");
+    let document = Document::parse("alpha.(inner value)").expect("valid dotos");
     let entry = DottedExpectation::Uncapitalized
         .read_entry(document.root_objects())
         .expect("dotted entry reads");
@@ -32,7 +32,7 @@ fn uncapitalized_reads_a_delimited_payload_value_from_one_application() {
 
 #[test]
 fn capitalized_reads_type_application_head() {
-    let document = Document::parse("Vector.X").expect("valid nota");
+    let document = Document::parse("Vector.X").expect("valid dotos");
     let entry = DottedExpectation::Capitalized
         .read_entry(document.root_objects())
         .expect("dotted entry reads");
@@ -44,32 +44,35 @@ fn capitalized_reads_type_application_head() {
 
 #[test]
 fn head_case_is_checked_against_the_expectation() {
-    let lowercase = Document::parse("vector.x").expect("valid nota");
+    let lowercase = Document::parse("vector.x").expect("valid dotos");
     let capitalized_error = DottedExpectation::Capitalized
         .read_entry(lowercase.root_objects())
         .expect_err("capitalized rejects a lowercase head");
     assert!(matches!(
         capitalized_error,
-        NotaDecodeError::DottedEntryCaseMismatch { .. }
+        DotosDecodeError::DottedEntryCaseMismatch { .. }
     ));
 
-    let uppercase = Document::parse("Vector.x").expect("valid nota");
+    let uppercase = Document::parse("Vector.x").expect("valid dotos");
     let uncapitalized_error = DottedExpectation::Uncapitalized
         .read_entry(uppercase.root_objects())
         .expect_err("uncapitalized rejects an uppercase head");
     assert!(matches!(
         uncapitalized_error,
-        NotaDecodeError::DottedEntryCaseMismatch { .. }
+        DotosDecodeError::DottedEntryCaseMismatch { .. }
     ));
 }
 
 #[test]
 fn a_leading_atom_without_a_period_is_not_a_dotted_entry() {
-    let document = Document::parse("alpha").expect("valid nota");
+    let document = Document::parse("alpha").expect("valid dotos");
     let error = DottedExpectation::Uncapitalized
         .read_entry(document.root_objects())
         .expect_err("a period-free atom is not a dotted entry");
-    assert!(matches!(error, NotaDecodeError::ExpectedDottedEntry { .. }));
+    assert!(matches!(
+        error,
+        DotosDecodeError::ExpectedDottedEntry { .. }
+    ));
 }
 
 #[test]
@@ -78,12 +81,12 @@ fn map_value_carrying_dots_rejoins_bare_and_round_trips() {
     // `String` value reclaims the dotted text, so a dotted string value stays
     // bare: the entry is `path.a.b.c` and the map is the plain
     // `Map.( key.Value … )` surface with no pipe escape.
-    let map = NotaSource::new("Map.(path.a.b.c)")
+    let map = DotosSource::new("Map.(path.a.b.c)")
         .parse::<BTreeMap<String, String>>()
         .expect("map decodes");
 
     assert_eq!(map.get("path"), Some(&String::from("a.b.c")));
-    assert_eq!(map.to_nota(), "Map.(path.a.b.c)");
+    assert_eq!(map.to_dotos(), "Map.(path.a.b.c)");
 }
 
 /// The block-level reader over an inline-value atom and the string-level reader
@@ -96,7 +99,7 @@ fn string_level_split_matches_the_block_level_reader() {
         (DottedExpectation::Capitalized, "Vector.X"),
         (DottedExpectation::Uncapitalized, "path.a.b.c"),
     ] {
-        let document = Document::parse(text).expect("valid nota");
+        let document = Document::parse(text).expect("valid dotos");
         let block_entry = expectation
             .read_entry(document.root_objects())
             .expect("block-level dotted entry reads");
@@ -124,7 +127,7 @@ fn string_level_case_rejection_matches_the_block_level_reader() {
     let block_error = DottedExpectation::Capitalized
         .read_entry(
             Document::parse(lowercase_head)
-                .expect("valid nota")
+                .expect("valid dotos")
                 .root_objects(),
         )
         .expect_err("capitalized rejects a lowercase head");
@@ -133,18 +136,18 @@ fn string_level_case_rejection_matches_the_block_level_reader() {
         .expect_err("capitalized rejects a lowercase head at string level");
     assert!(matches!(
         block_error,
-        NotaDecodeError::DottedEntryCaseMismatch { .. }
+        DotosDecodeError::DottedEntryCaseMismatch { .. }
     ));
     assert!(matches!(
         string_error,
-        NotaDecodeError::DottedEntryCaseMismatch { .. }
+        DotosDecodeError::DottedEntryCaseMismatch { .. }
     ));
 
     let uppercase_head = "Vector.x";
     let block_error = DottedExpectation::Uncapitalized
         .read_entry(
             Document::parse(uppercase_head)
-                .expect("valid nota")
+                .expect("valid dotos")
                 .root_objects(),
         )
         .expect_err("uncapitalized rejects an uppercase head");
@@ -153,11 +156,11 @@ fn string_level_case_rejection_matches_the_block_level_reader() {
         .expect_err("uncapitalized rejects an uppercase head at string level");
     assert!(matches!(
         block_error,
-        NotaDecodeError::DottedEntryCaseMismatch { .. }
+        DotosDecodeError::DottedEntryCaseMismatch { .. }
     ));
     assert!(matches!(
         string_error,
-        NotaDecodeError::DottedEntryCaseMismatch { .. }
+        DotosDecodeError::DottedEntryCaseMismatch { .. }
     ));
 }
 
@@ -168,7 +171,10 @@ fn string_level_period_free_text_is_not_a_dotted_entry() {
     let error = DottedExpectation::Uncapitalized
         .read_string_entry("alpha")
         .expect_err("a period-free string is not a dotted entry");
-    assert!(matches!(error, NotaDecodeError::ExpectedDottedEntry { .. }));
+    assert!(matches!(
+        error,
+        DotosDecodeError::ExpectedDottedEntry { .. }
+    ));
 }
 
 /// A string ending at the period has no following block to supply the value,
@@ -180,7 +186,7 @@ fn string_level_text_ending_at_the_period_is_a_missing_value() {
         .expect_err("a string ending at the period has no value");
     assert!(matches!(
         error,
-        NotaDecodeError::DottedEntryMissingValue { .. }
+        DotosDecodeError::DottedEntryMissingValue { .. }
     ));
 }
 

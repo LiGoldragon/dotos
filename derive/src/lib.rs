@@ -1,4 +1,4 @@
-//! Proc-macro derives for `nota`.
+//! Proc-macro derives for `dotos`.
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStreamTwo;
@@ -8,14 +8,14 @@ use syn::{
     Generics, Ident, Index, LitInt, LitStr, Variant, parse_macro_input,
 };
 
-#[proc_macro_derive(NotaDecode, attributes(nota))]
-pub fn derive_nota_decode(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(DotosDecode, attributes(dotos))]
+pub fn derive_dotos_decode(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     CodecDerive::new(input).expand_decode().into()
 }
 
-#[proc_macro_derive(NotaEncode, attributes(nota))]
-pub fn derive_nota_encode(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(DotosEncode, attributes(dotos))]
+pub fn derive_dotos_encode(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     CodecDerive::new(input).expand_encode().into()
 }
@@ -26,8 +26,8 @@ pub fn derive_structural_macro_node(input: TokenStream) -> TokenStream {
     StructuralDerive::new(input).expand().into()
 }
 
-#[proc_macro_derive(NotaDecodeTraced, attributes(nota))]
-pub fn derive_nota_decode_traced(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(DotosDecodeTraced, attributes(dotos))]
+pub fn derive_dotos_decode_traced(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     TracedDerive::new(input).expand().into()
 }
@@ -50,7 +50,7 @@ impl CodecDerive {
     }
 
     fn expand(self, direction: CodecDirection) -> TokenStreamTwo {
-        let attributes = match ContainerNotaAttributes::from_attributes(&self.input.attrs) {
+        let attributes = match ContainerDotosAttributes::from_attributes(&self.input.attrs) {
             Ok(attributes) => attributes,
             Err(error) => return error.to_compile_error(),
         };
@@ -62,7 +62,7 @@ impl CodecDerive {
             Data::Enum(data) => {
                 EnumDerive::new(name, self.input.generics, data, direction).expand()
             }
-            Data::Union(_) => Error::new_spanned(name, "Nota codec derives do not support unions")
+            Data::Union(_) => Error::new_spanned(name, "Dotos codec derives do not support unions")
                 .to_compile_error(),
         }
     }
@@ -77,22 +77,22 @@ enum CodecDirection {
 impl CodecDirection {
     fn bound(self) -> TokenStreamTwo {
         match self {
-            Self::Decode => quote!(::nota::NotaDecode),
-            Self::Encode => quote!(::nota::NotaEncode),
+            Self::Decode => quote!(::dotos::DotosDecode),
+            Self::Encode => quote!(::dotos::DotosEncode),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-struct ContainerNotaAttributes {
+struct ContainerDotosAttributes {
     known_root: bool,
 }
 
-impl ContainerNotaAttributes {
+impl ContainerDotosAttributes {
     fn from_attributes(attributes: &[Attribute]) -> Result<Self, Error> {
         let mut output = Self::default();
         for attribute in attributes {
-            if !attribute.path().is_ident("nota") {
+            if !attribute.path().is_ident("dotos") {
                 continue;
             }
             attribute.parse_nested_meta(|meta| {
@@ -100,7 +100,7 @@ impl ContainerNotaAttributes {
                     output.known_root = true;
                     return Ok(());
                 }
-                Err(meta.error("unsupported nota container attribute"))
+                Err(meta.error("unsupported dotos container attribute"))
             })?;
         }
         Ok(output)
@@ -112,15 +112,15 @@ impl ContainerNotaAttributes {
 }
 
 #[derive(Clone, Default)]
-struct FieldNotaAttributes {
+struct FieldDotosAttributes {
     name: Option<LitStr>,
 }
 
-impl FieldNotaAttributes {
+impl FieldDotosAttributes {
     fn from_attributes(attributes: &[Attribute]) -> Result<Self, Error> {
         let mut output = Self::default();
         for attribute in attributes {
-            if !attribute.path().is_ident("nota") {
+            if !attribute.path().is_ident("dotos") {
                 continue;
             }
             attribute.parse_nested_meta(|meta| {
@@ -129,7 +129,7 @@ impl FieldNotaAttributes {
                     output.name = Some(value.parse()?);
                     return Ok(());
                 }
-                Err(meta.error("unsupported nota field attribute"))
+                Err(meta.error("unsupported dotos field attribute"))
             })?;
         }
         Ok(output)
@@ -145,7 +145,7 @@ struct StructDerive {
     generics: Generics,
     data: DataStruct,
     direction: CodecDirection,
-    attributes: ContainerNotaAttributes,
+    attributes: ContainerDotosAttributes,
 }
 
 impl StructDerive {
@@ -154,7 +154,7 @@ impl StructDerive {
         generics: Generics,
         data: DataStruct,
         direction: CodecDirection,
-        attributes: ContainerNotaAttributes,
+        attributes: ContainerDotosAttributes,
     ) -> Self {
         Self {
             name,
@@ -193,8 +193,8 @@ impl StructDerive {
                 };
                 let document_impl = if self.attributes.known_root() {
                     quote! {
-                        impl #implementation_generics ::nota::NotaDocumentDecode for #name #type_generics #where_clause {
-                            fn from_nota_document_body(body: &::nota::NotaDocumentBody<'_>) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
+                        impl #implementation_generics ::dotos::DotosDocumentDecode for #name #type_generics #where_clause {
+                            fn from_dotos_document_body(body: &::dotos::DotosDocumentBody<'_>) -> ::std::result::Result<Self, ::dotos::DotosDecodeError> {
                                 Self::from_body_objects(body.root_objects())
                             }
                         }
@@ -204,9 +204,9 @@ impl StructDerive {
                 };
                 quote! {
                     impl #implementation_generics #name #type_generics #where_clause {
-                        pub fn from_body_objects(objects: &[::nota::Block]) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
+                        pub fn from_body_objects(objects: &[::dotos::Block]) -> ::std::result::Result<Self, ::dotos::DotosDecodeError> {
                             if objects.len() != #field_count {
-                                return Err(::nota::NotaDecodeError::ExpectedRootCount {
+                                return Err(::dotos::DotosDecodeError::ExpectedRootCount {
                                     type_name: #type_name,
                                     expected: #field_count,
                                     found: objects.len(),
@@ -218,18 +218,18 @@ impl StructDerive {
                             })
                         }
                     }
-                    impl #implementation_generics ::nota::NotaBodyDecode for #name #type_generics #where_clause {
-                        fn from_nota_body(body: &::nota::NotaBody<'_>) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
+                    impl #implementation_generics ::dotos::DotosBodyDecode for #name #type_generics #where_clause {
+                        fn from_dotos_body(body: &::dotos::DotosBody<'_>) -> ::std::result::Result<Self, ::dotos::DotosDecodeError> {
                             Self::from_body_objects(body.root_objects())
                         }
                     }
-                    impl #implementation_generics ::nota::NotaDecode for #name #type_generics #where_clause {
-                        fn from_nota_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
-                            let body = ::nota::NotaBlock::new(block).expect_body(
-                                ::nota::Delimiter::Brace,
+                    impl #implementation_generics ::dotos::DotosDecode for #name #type_generics #where_clause {
+                        fn from_dotos_block(block: &::dotos::Block) -> ::std::result::Result<Self, ::dotos::DotosDecodeError> {
+                            let body = ::dotos::DotosBlock::new(block).expect_body(
+                                ::dotos::Delimiter::Brace,
                                 #type_name,
                             )?;
-                            <Self as ::nota::NotaBodyDecode>::from_nota_body(&body)
+                            <Self as ::dotos::DotosBodyDecode>::from_dotos_body(&body)
                         }
                     }
                     #document_impl
@@ -238,21 +238,21 @@ impl StructDerive {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
-                    impl #implementation_generics ::nota::NotaDecode for #name #type_generics #where_clause {
-                        fn from_nota_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
-                            Ok(Self(<#field_type as ::nota::NotaDecode>::from_nota_block(block)?))
+                    impl #implementation_generics ::dotos::DotosDecode for #name #type_generics #where_clause {
+                        fn from_dotos_block(block: &::dotos::Block) -> ::std::result::Result<Self, ::dotos::DotosDecodeError> {
+                            Ok(Self(<#field_type as ::dotos::DotosDecode>::from_dotos_block(block)?))
                         }
                     }
                 }
             }
             Fields::Unnamed(fields) => Error::new_spanned(
                 fields,
-                "NotaDecode supports named structs or one-field tuple newtypes",
+                "DotosDecode supports named structs or one-field tuple newtypes",
             )
             .to_compile_error(),
             Fields::Unit => Error::new_spanned(
                 name,
-                "NotaDecode supports named structs or one-field tuple newtypes",
+                "DotosDecode supports named structs or one-field tuple newtypes",
             )
             .to_compile_error(),
         }
@@ -276,9 +276,9 @@ impl StructDerive {
                 };
                 let document_impl = if self.attributes.known_root() {
                     quote! {
-                        impl #implementation_generics ::nota::NotaDocumentEncode for #name #type_generics #where_clause {
-                            fn to_nota_document_body(&self) -> ::nota::NotaDocumentEncoding {
-                                <Self as ::nota::NotaBodyEncode>::to_nota_body(self)
+                        impl #implementation_generics ::dotos::DotosDocumentEncode for #name #type_generics #where_clause {
+                            fn to_dotos_document_body(&self) -> ::dotos::DotosDocumentEncoding {
+                                <Self as ::dotos::DotosBodyEncode>::to_dotos_body(self)
                             }
                         }
                     }
@@ -286,17 +286,17 @@ impl StructDerive {
                     quote! {}
                 };
                 quote! {
-                    impl #implementation_generics ::nota::NotaBodyEncode for #name #type_generics #where_clause {
-                        fn to_nota_body(&self) -> ::nota::NotaBodyEncoding {
-                            ::nota::NotaBodyEncoding::new(vec![
+                    impl #implementation_generics ::dotos::DotosBodyEncode for #name #type_generics #where_clause {
+                        fn to_dotos_body(&self) -> ::dotos::DotosBodyEncoding {
+                            ::dotos::DotosBodyEncoding::new(vec![
                                 #(#body_fields,)*
                             ])
                         }
                     }
-                    impl #implementation_generics ::nota::NotaEncode for #name #type_generics #where_clause {
-                        fn to_nota(&self) -> String {
-                            <Self as ::nota::NotaBodyEncode>::to_nota_body(self)
-                                .to_delimited_nota(::nota::Delimiter::Brace)
+                    impl #implementation_generics ::dotos::DotosEncode for #name #type_generics #where_clause {
+                        fn to_dotos(&self) -> String {
+                            <Self as ::dotos::DotosBodyEncode>::to_dotos_body(self)
+                                .to_delimited_dotos(::dotos::Delimiter::Brace)
                         }
                     }
                     #document_impl
@@ -304,21 +304,21 @@ impl StructDerive {
             }
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 quote! {
-                    impl #implementation_generics ::nota::NotaEncode for #name #type_generics #where_clause {
-                        fn to_nota(&self) -> String {
-                            ::nota::NotaEncode::to_nota(&self.0)
+                    impl #implementation_generics ::dotos::DotosEncode for #name #type_generics #where_clause {
+                        fn to_dotos(&self) -> String {
+                            ::dotos::DotosEncode::to_dotos(&self.0)
                         }
                     }
                 }
             }
             Fields::Unnamed(fields) => Error::new_spanned(
                 fields,
-                "NotaEncode supports named structs or one-field tuple newtypes",
+                "DotosEncode supports named structs or one-field tuple newtypes",
             )
             .to_compile_error(),
             Fields::Unit => Error::new_spanned(
                 name,
-                "NotaEncode supports named structs or one-field tuple newtypes",
+                "DotosEncode supports named structs or one-field tuple newtypes",
             )
             .to_compile_error(),
         }
@@ -339,14 +339,14 @@ impl<'field> FieldDecode<'field> {
         let name = self.field.ident.as_ref().expect("named field");
         let field_type = &self.field.ty;
         let index = Index::from(self.index);
-        let attributes = FieldNotaAttributes::from_attributes(&self.field.attrs)?;
+        let attributes = FieldDotosAttributes::from_attributes(&self.field.attrs)?;
         if let Some(body_name) = attributes.name() {
             return Ok(quote! {
-                #name: <#field_type as ::nota::NotaNamedBodyFieldDecode>::from_nota_named_body_field(#body_name, &children[#index])?
+                #name: <#field_type as ::dotos::DotosNamedBodyFieldDecode>::from_dotos_named_body_field(#body_name, &children[#index])?
             });
         }
         Ok(quote! {
-            #name: <#field_type as ::nota::NotaDecode>::from_nota_block(&children[#index])?
+            #name: <#field_type as ::dotos::DotosDecode>::from_dotos_block(&children[#index])?
         })
     }
 }
@@ -362,14 +362,14 @@ impl<'field> FieldEncode<'field> {
 
     fn body_named(&self) -> Result<TokenStreamTwo, Error> {
         let name = self.field.ident.as_ref().expect("named field");
-        let attributes = FieldNotaAttributes::from_attributes(&self.field.attrs)?;
+        let attributes = FieldDotosAttributes::from_attributes(&self.field.attrs)?;
         if attributes.name().is_some() {
             return Ok(quote! {
-                ::nota::NotaNamedBodyFieldEncode::to_nota_named_body_field(&self.#name)
+                ::dotos::DotosNamedBodyFieldEncode::to_dotos_named_body_field(&self.#name)
             });
         }
         Ok(quote! {
-            ::nota::NotaEncode::to_nota(&self.#name)
+            ::dotos::DotosEncode::to_dotos(&self.#name)
         })
     }
 }
@@ -417,40 +417,40 @@ impl EnumDerive {
             .filter(|variant| !matches!(variant.fields, Fields::Unit))
             .map(|variant| PayloadVariantDecode::new(&name, variant).arm());
         quote! {
-            impl #implementation_generics ::nota::NotaDecode for #name #type_generics #where_clause {
-                fn from_nota_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
+            impl #implementation_generics ::dotos::DotosDecode for #name #type_generics #where_clause {
+                fn from_dotos_block(block: &::dotos::Block) -> ::std::result::Result<Self, ::dotos::DotosDecodeError> {
                     // A unit variant is a bare atom; a data variant is the
                     // dotted application `Variant.payload`, whose head atom
                     // names the variant and whose payload carries the fields.
                     if let Some(variant) = block.atom().map(|atom| atom.text()) {
                         return match variant {
                             #(#unit_variants)*
-                            other => Err(::nota::NotaDecodeError::UnknownVariant {
+                            other => Err(::dotos::DotosDecodeError::UnknownVariant {
                                 enum_name: #enum_name,
                                 variant: other.to_owned(),
                             }),
                         };
                     }
-                    let (head, payload) = block.as_application().ok_or(::nota::NotaDecodeError::ExpectedDelimited {
+                    let (head, payload) = block.as_application().ok_or(::dotos::DotosDecodeError::ExpectedDelimited {
                         type_name: #enum_name,
                         delimiter: "unit-variant atom or Variant.payload application",
                     })?;
-                    let variant = head.demote_to_string().ok_or(::nota::NotaDecodeError::ExpectedAtom {
+                    let variant = head.demote_to_string().ok_or(::dotos::DotosDecodeError::ExpectedAtom {
                         type_name: "enum variant",
                     })?;
                     match variant {
                         #(#payload_variants)*
-                        other => Err(::nota::NotaDecodeError::UnknownVariant {
+                        other => Err(::dotos::DotosDecodeError::UnknownVariant {
                             enum_name: #enum_name,
                             variant: other.to_owned(),
                         }),
                     }
                 }
             }
-            impl #implementation_generics ::nota::NotaBodyDecode for #name #type_generics #where_clause {
-                fn from_nota_body(body: &::nota::NotaBody<'_>) -> ::std::result::Result<Self, ::nota::NotaDecodeError> {
+            impl #implementation_generics ::dotos::DotosBodyDecode for #name #type_generics #where_clause {
+                fn from_dotos_body(body: &::dotos::DotosBody<'_>) -> ::std::result::Result<Self, ::dotos::DotosDecodeError> {
                     let objects = body.expect_fields(#enum_name, 1)?;
-                    <Self as ::nota::NotaDecode>::from_nota_block(&objects[0])
+                    <Self as ::dotos::DotosDecode>::from_dotos_block(&objects[0])
                 }
             }
         }
@@ -465,18 +465,18 @@ impl EnumDerive {
             .data
             .variants
             .iter()
-            .map(|variant| VariantEncode::new(&name, variant).nota_arm());
+            .map(|variant| VariantEncode::new(&name, variant).dotos_arm());
         quote! {
-            impl #implementation_generics ::nota::NotaEncode for #name #type_generics #where_clause {
-                fn to_nota(&self) -> String {
+            impl #implementation_generics ::dotos::DotosEncode for #name #type_generics #where_clause {
+                fn to_dotos(&self) -> String {
                     match self {
                         #(#arms)*
                     }
                 }
             }
-            impl #implementation_generics ::nota::NotaBodyEncode for #name #type_generics #where_clause {
-                fn to_nota_body(&self) -> ::nota::NotaBodyEncoding {
-                    ::nota::NotaBodyEncoding::new(vec![::nota::NotaEncode::to_nota(self)])
+            impl #implementation_generics ::dotos::DotosBodyEncode for #name #type_generics #where_clause {
+                fn to_dotos_body(&self) -> ::dotos::DotosBodyEncoding {
+                    ::dotos::DotosBodyEncoding::new(vec![::dotos::DotosEncode::to_dotos(self)])
                 }
             }
         }
@@ -521,7 +521,7 @@ impl<'variant> PayloadVariantDecode<'variant> {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
-                    #tag => Ok(#enum_name::#variant_name(<#field_type as ::nota::NotaDecode>::from_nota_block(payload)?)),
+                    #tag => Ok(#enum_name::#variant_name(<#field_type as ::dotos::DotosDecode>::from_dotos_block(payload)?)),
                 }
             }
             Fields::Unnamed(fields) => {
@@ -530,13 +530,13 @@ impl<'variant> PayloadVariantDecode<'variant> {
                     let field_type = &field.ty;
                     let index = Index::from(index);
                     quote! {
-                        <#field_type as ::nota::NotaDecode>::from_nota_block(&payload_children[#index])?
+                        <#field_type as ::dotos::DotosDecode>::from_dotos_block(&payload_children[#index])?
                     }
                 });
                 quote! {
                     #tag => {
-                        let payload_children = ::nota::NotaBlock::new(payload).expect_children(
-                            ::nota::Delimiter::Brace,
+                        let payload_children = ::dotos::DotosBlock::new(payload).expect_children(
+                            ::dotos::Delimiter::Brace,
                             #tag,
                             #field_count,
                         )?;
@@ -546,7 +546,7 @@ impl<'variant> PayloadVariantDecode<'variant> {
             }
             Fields::Named(fields) => Error::new_spanned(
                 fields,
-                "NotaDecode enum payload variants must carry unnamed fields, not named fields",
+                "DotosDecode enum payload variants must carry unnamed fields, not named fields",
             )
             .to_compile_error(),
             Fields::Unit => {
@@ -567,7 +567,7 @@ impl<'variant> VariantEncode<'variant> {
         Self { enum_name, variant }
     }
 
-    fn nota_arm(&self) -> TokenStreamTwo {
+    fn dotos_arm(&self) -> TokenStreamTwo {
         let enum_name = self.enum_name;
         let variant_name = &self.variant.ident;
         let tag = variant_name.to_string();
@@ -582,7 +582,7 @@ impl<'variant> VariantEncode<'variant> {
                 let binding = format_ident!("payload");
                 quote! {
                     #enum_name::#variant_name(#binding) => {
-                        ::std::format!("{}.{}", #tag, ::nota::NotaEncode::to_nota(#binding))
+                        ::std::format!("{}.{}", #tag, ::dotos::DotosEncode::to_dotos(#binding))
                     }
                 }
             }
@@ -594,12 +594,12 @@ impl<'variant> VariantEncode<'variant> {
                     .collect::<Vec<_>>();
                 let encoded_fields = bindings.iter().map(|binding| {
                     quote! {
-                        ::nota::NotaEncode::to_nota(#binding)
+                        ::dotos::DotosEncode::to_dotos(#binding)
                     }
                 });
                 quote! {
                     #enum_name::#variant_name(#(#bindings),*) => {
-                        let payload = ::nota::Delimiter::Brace.wrap([
+                        let payload = ::dotos::Delimiter::Brace.wrap([
                             #(#encoded_fields),*
                         ]);
                         ::std::format!("{}.{}", #tag, payload)
@@ -608,7 +608,7 @@ impl<'variant> VariantEncode<'variant> {
             }
             Fields::Named(fields) => Error::new_spanned(
                 fields,
-                "NotaEncode enum payload variants must carry unnamed fields, not named fields",
+                "DotosEncode enum payload variants must carry unnamed fields, not named fields",
             )
             .to_compile_error(),
         }
@@ -678,55 +678,55 @@ impl StructuralDerive {
         let encode_arms = variants.iter().map(StructuralVariantDerive::encode_arm);
         let (implementation_generics, type_generics, where_clause) = generics.split_for_impl();
         quote! {
-            impl #implementation_generics ::nota::StructuralMacroNode for #name #type_generics #where_clause {
-                type Error = ::nota::StructuralMacroNodeError;
+            impl #implementation_generics ::dotos::StructuralMacroNode for #name #type_generics #where_clause {
+                type Error = ::dotos::StructuralMacroNodeError;
 
-                fn structural_position() -> ::nota::PositionPredicate {
-                    ::nota::PositionPredicate::named(#node_name)
+                fn structural_position() -> ::dotos::PositionPredicate {
+                    ::dotos::PositionPredicate::named(#node_name)
                 }
 
-                fn structural_variants() -> Vec<::nota::StructuralVariant> {
+                fn structural_variants() -> Vec<::dotos::StructuralVariant> {
                     vec![
                         #(#structural_variants,)*
                     ]
                 }
 
-                fn from_structural_block(block: &::nota::Block) -> ::std::result::Result<Self, ::nota::StructuralMacroError<Self::Error>> {
+                fn from_structural_block(block: &::dotos::Block) -> ::std::result::Result<Self, ::dotos::StructuralMacroError<Self::Error>> {
                     let variants =
-                        ::nota::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
-                            .map_err(::nota::StructuralMacroError::Dispatch)?;
+                        ::dotos::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
+                            .map_err(::dotos::StructuralMacroError::Dispatch)?;
                     #(#direct_decode_arms)*
-                    let candidate = ::nota::MacroCandidate::from_block(Self::structural_position(), block);
+                    let candidate = ::dotos::MacroCandidate::from_block(Self::structural_position(), block);
                     match variants.dispatch(&candidate) {
-                        Ok(matched) => Err(::nota::StructuralMacroError::MatchedNode(
-                            ::nota::StructuralMacroNodeError::UnexpectedVariant {
+                        Ok(matched) => Err(::dotos::StructuralMacroError::MatchedNode(
+                            ::dotos::StructuralMacroNodeError::UnexpectedVariant {
                                 node: #node_name,
                                 variant: matched.macro_name().to_owned(),
                             }
                         )),
-                        Err(error) => Err(::nota::StructuralMacroError::Dispatch(error)),
+                        Err(error) => Err(::dotos::StructuralMacroError::Dispatch(error)),
                     }
                 }
 
-                fn from_structural_candidate(candidate: ::nota::MacroCandidate<'_>) -> ::std::result::Result<Self, ::nota::StructuralMacroError<Self::Error>> {
+                fn from_structural_candidate(candidate: ::dotos::MacroCandidate<'_>) -> ::std::result::Result<Self, ::dotos::StructuralMacroError<Self::Error>> {
                     if let [block] = candidate.blocks() {
                         return Self::from_structural_block(block);
                     }
                     let variants =
-                        ::nota::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
-                            .map_err(::nota::StructuralMacroError::Dispatch)?;
+                        ::dotos::StructuralVariantSet::new(Self::structural_position(), Self::structural_variants())
+                            .map_err(::dotos::StructuralMacroError::Dispatch)?;
                     let matched = variants
                         .dispatch(&candidate)
-                        .map_err(::nota::StructuralMacroError::Dispatch)?;
-                    Err(::nota::StructuralMacroError::MatchedNode(
-                        ::nota::StructuralMacroNodeError::UnexpectedVariant {
+                        .map_err(::dotos::StructuralMacroError::Dispatch)?;
+                    Err(::dotos::StructuralMacroError::MatchedNode(
+                        ::dotos::StructuralMacroNodeError::UnexpectedVariant {
                             node: #node_name,
                             variant: matched.macro_name().to_owned(),
                         }
                     ))
                 }
 
-                fn to_structural_nota(&self) -> String {
+                fn to_structural_dotos(&self) -> String {
                     match self {
                         #(#encode_arms)*
                     }
@@ -786,7 +786,7 @@ impl StructuralVariantDerive {
                 return (|| -> ::std::result::Result<Self, Self::Error> {
                     Ok(#constructor)
                 })()
-                .map_err(::nota::StructuralMacroError::MatchedNode);
+                .map_err(::dotos::StructuralMacroError::MatchedNode);
             }
         }
     }
@@ -802,15 +802,15 @@ impl StructuralVariantDerive {
             let field_type = &self.field_types[0];
             return quote! {
                 #enum_name::#variant_name({
-                    let body_blocks: ::std::vec::Vec<&::nota::Block> =
+                    let body_blocks: ::std::vec::Vec<&::dotos::Block> =
                         block.root_objects().iter().skip(1).collect();
-                    <#field_type as ::nota::StructuralMacroNode>::from_structural_candidate(
-                        ::nota::MacroCandidate::new(
-                            <#field_type as ::nota::StructuralMacroNode>::structural_position(),
+                    <#field_type as ::dotos::StructuralMacroNode>::from_structural_candidate(
+                        ::dotos::MacroCandidate::new(
+                            <#field_type as ::dotos::StructuralMacroNode>::structural_position(),
                             body_blocks,
                         ),
                     )
-                    .map_err(|error| ::nota::StructuralMacroNodeError::Field {
+                    .map_err(|error| ::dotos::StructuralMacroNodeError::Field {
                         node: #node_name,
                         variant: #variant_text,
                         field: 0usize,
@@ -826,14 +826,14 @@ impl StructuralVariantDerive {
                 #enum_name::#variant_name(
                     {
                         let head_block = block.root_object_at(0).ok_or(
-                            ::nota::StructuralMacroNodeError::MissingCapture {
+                            ::dotos::StructuralMacroNodeError::MissingCapture {
                                 node: #node_name,
                                 variant: #variant_text,
                                 capture: "field_0",
                             },
                         )?;
-                        <#head_type as ::nota::StructuralMacroNode>::from_structural_block(head_block)
-                            .map_err(|error| ::nota::StructuralMacroNodeError::Field {
+                        <#head_type as ::dotos::StructuralMacroNode>::from_structural_block(head_block)
+                            .map_err(|error| ::dotos::StructuralMacroNodeError::Field {
                                 node: #node_name,
                                 variant: #variant_text,
                                 field: 0usize,
@@ -841,15 +841,15 @@ impl StructuralVariantDerive {
                             })?
                     },
                     {
-                        let body_blocks: ::std::vec::Vec<&::nota::Block> =
+                        let body_blocks: ::std::vec::Vec<&::dotos::Block> =
                             block.root_objects().iter().skip(1).collect();
-                        <#tail_type as ::nota::StructuralMacroNode>::from_structural_candidate(
-                            ::nota::MacroCandidate::new(
-                                <#tail_type as ::nota::StructuralMacroNode>::structural_position(),
+                        <#tail_type as ::dotos::StructuralMacroNode>::from_structural_candidate(
+                            ::dotos::MacroCandidate::new(
+                                <#tail_type as ::dotos::StructuralMacroNode>::structural_position(),
                                 body_blocks,
                             ),
                         )
-                        .map_err(|error| ::nota::StructuralMacroNodeError::Field {
+                        .map_err(|error| ::dotos::StructuralMacroNodeError::Field {
                             node: #node_name,
                             variant: #variant_text,
                             field: 1usize,
@@ -865,15 +865,15 @@ impl StructuralVariantDerive {
                 #enum_name::#variant_name({
                     let atom_text = block
                         .root_object_at(1usize)
-                        .and_then(::nota::Block::demote_to_string)
-                        .ok_or(::nota::StructuralMacroNodeError::MissingSlot {
+                        .and_then(::dotos::Block::demote_to_string)
+                        .ok_or(::dotos::StructuralMacroNodeError::MissingSlot {
                             node: #node_name,
                             variant: #variant_text,
                             capture: "atom",
                             slot: 0usize,
                         })?;
                     <#field_type as ::std::str::FromStr>::from_str(atom_text)
-                        .map_err(|error| ::nota::StructuralMacroNodeError::Field {
+                        .map_err(|error| ::dotos::StructuralMacroNodeError::Field {
                             node: #node_name,
                             variant: #variant_text,
                             field: 0usize,
@@ -891,8 +891,8 @@ impl StructuralVariantDerive {
                     .shape
                     .direct_field_block(field_index, node_name, variant_text);
                 quote! {
-                    <#field_type as ::nota::StructuralMacroNode>::from_structural_block(#block)
-                        .map_err(|error| ::nota::StructuralMacroNodeError::Field {
+                    <#field_type as ::dotos::StructuralMacroNode>::from_structural_block(#block)
+                        .map_err(|error| ::dotos::StructuralMacroNodeError::Field {
                             node: #node_name,
                             variant: #variant_text,
                             field: #field_index,
@@ -1071,56 +1071,56 @@ impl StructuralVariantShape {
     fn variant_value(&self, variant_name: &str, expected: &str) -> TokenStreamTwo {
         match self {
             Self::PascalAtom => quote! {
-                ::nota::BlockShape::pascal_atom(Some(::nota::CaptureName::new("field_0")))
+                ::dotos::BlockShape::pascal_atom(Some(::dotos::CaptureName::new("field_0")))
                     .into_structural_variant(#variant_name, #expected)
             },
             Self::Keyword { keyword } => quote! {
-                ::nota::BlockShape::literal(#keyword)
+                ::dotos::BlockShape::literal(#keyword)
                     .into_structural_variant(#variant_name, #expected)
             },
             Self::Headed { head, arity } => {
                 let arity = *arity as u64;
                 quote! {
-                    ::nota::BlockShape::headed_parenthesis(
+                    ::dotos::BlockShape::headed_parenthesis(
                         #head,
-                        ::nota::MacroObjectCount::Exact(#arity),
-                        Some(::nota::CaptureName::new("signature")),
+                        ::dotos::MacroObjectCount::Exact(#arity),
+                        Some(::dotos::CaptureName::new("signature")),
                     )
                     .into_structural_variant(#variant_name, #expected)
                 }
             }
             Self::HeadedAtom { head } => quote! {
-                ::nota::BlockShape::headed_parenthesis(
+                ::dotos::BlockShape::headed_parenthesis(
                     #head,
-                    ::nota::MacroObjectCount::Exact(2),
-                    Some(::nota::CaptureName::new("signature")),
+                    ::dotos::MacroObjectCount::Exact(2),
+                    Some(::dotos::CaptureName::new("signature")),
                 )
                 .into_structural_variant(#variant_name, #expected)
             },
             Self::HeadedBody { head } => quote! {
-                ::nota::BlockShape::headed_parenthesis(
+                ::dotos::BlockShape::headed_parenthesis(
                     #head,
-                    ::nota::MacroObjectCount::Any,
-                    Some(::nota::CaptureName::new("signature")),
+                    ::dotos::MacroObjectCount::Any,
+                    Some(::dotos::CaptureName::new("signature")),
                 )
                 .into_structural_variant(#variant_name, #expected)
             },
             Self::PascalHead { arity } => {
                 let arity = *arity as u64;
                 quote! {
-                    ::nota::BlockShape::pascal_headed_parenthesis(
-                        ::nota::MacroObjectCount::Exact(#arity),
-                        ::nota::CaptureName::new("field_0"),
-                        Some(::nota::CaptureName::new("signature")),
+                    ::dotos::BlockShape::pascal_headed_parenthesis(
+                        ::dotos::MacroObjectCount::Exact(#arity),
+                        ::dotos::CaptureName::new("field_0"),
+                        Some(::dotos::CaptureName::new("signature")),
                     )
                     .into_structural_variant(#variant_name, #expected)
                 }
             }
             Self::PascalHeadBody => quote! {
-                ::nota::BlockShape::pascal_headed_parenthesis(
-                    ::nota::MacroObjectCount::Any,
-                    ::nota::CaptureName::new("field_0"),
-                    Some(::nota::CaptureName::new("signature")),
+                ::dotos::BlockShape::pascal_headed_parenthesis(
+                    ::dotos::MacroObjectCount::Any,
+                    ::dotos::CaptureName::new("field_0"),
+                    Some(::dotos::CaptureName::new("signature")),
                 )
                 .into_structural_variant(#variant_name, #expected)
             },
@@ -1215,7 +1215,7 @@ impl StructuralVariantShape {
                 let child_index = field_index + 1;
                 quote! {
                     block.root_object_at(#child_index)
-                        .ok_or(::nota::StructuralMacroNodeError::MissingSlot {
+                        .ok_or(::dotos::StructuralMacroNodeError::MissingSlot {
                             node: #node_name,
                             variant: #variant_name,
                             capture: "arguments",
@@ -1225,7 +1225,7 @@ impl StructuralVariantShape {
             }
             Self::PascalHead { .. } if field_index == 0 => quote! {
                 block.root_object_at(0)
-                    .ok_or(::nota::StructuralMacroNodeError::MissingCapture {
+                    .ok_or(::dotos::StructuralMacroNodeError::MissingCapture {
                         node: #node_name,
                         variant: #variant_name,
                         capture: "field_0",
@@ -1236,7 +1236,7 @@ impl StructuralVariantShape {
                 let slot = field_index - 1;
                 quote! {
                     block.root_object_at(#child_index)
-                        .ok_or(::nota::StructuralMacroNodeError::MissingSlot {
+                        .ok_or(::dotos::StructuralMacroNodeError::MissingSlot {
                             node: #node_name,
                             variant: #variant_name,
                             capture: "arguments",
@@ -1251,7 +1251,7 @@ impl StructuralVariantShape {
         match self {
             Self::PascalAtom => {
                 let only = &bindings[0];
-                quote!(::nota::StructuralMacroNode::to_structural_nota(#only))
+                quote!(::dotos::StructuralMacroNode::to_structural_dotos(#only))
             }
             Self::Keyword { keyword } => quote!(#keyword.to_owned()),
             Self::HeadedAtom { head } => {
@@ -1262,7 +1262,7 @@ impl StructuralVariantShape {
                 let only = &bindings[0];
                 quote! {
                     {
-                        let body = ::nota::StructuralMacroNode::to_structural_nota(#only);
+                        let body = ::dotos::StructuralMacroNode::to_structural_dotos(#only);
                         if body.is_empty() {
                             format!("({})", #head)
                         } else {
@@ -1277,7 +1277,7 @@ impl StructuralVariantShape {
                     proc_macro2::Span::call_site(),
                 );
                 let arguments = bindings.iter().map(
-                    |binding| quote!(::nota::StructuralMacroNode::to_structural_nota(#binding)),
+                    |binding| quote!(::dotos::StructuralMacroNode::to_structural_dotos(#binding)),
                 );
                 quote!(format!(#format_literal, #(#arguments),*))
             }
@@ -1287,7 +1287,7 @@ impl StructuralVariantShape {
                     proc_macro2::Span::call_site(),
                 );
                 let arguments = bindings.iter().map(
-                    |binding| quote!(::nota::StructuralMacroNode::to_structural_nota(#binding)),
+                    |binding| quote!(::dotos::StructuralMacroNode::to_structural_dotos(#binding)),
                 );
                 quote!(format!(#format_literal, #(#arguments),*))
             }
@@ -1296,8 +1296,8 @@ impl StructuralVariantShape {
                 let tail = &bindings[1];
                 quote! {
                     {
-                        let head = ::nota::StructuralMacroNode::to_structural_nota(#head);
-                        let body = ::nota::StructuralMacroNode::to_structural_nota(#tail);
+                        let head = ::dotos::StructuralMacroNode::to_structural_dotos(#head);
+                        let body = ::dotos::StructuralMacroNode::to_structural_dotos(#tail);
                         if body.is_empty() {
                             format!("({})", head)
                         } else {
@@ -1325,7 +1325,7 @@ impl StructuralVariantShape {
     }
 }
 
-/// Emits `NotaDecodeTraced` alongside the ordinary `NotaDecode`: the same
+/// Emits `DotosDecodeTraced` alongside the ordinary `DotosDecode`: the same
 /// type-directed traversal, but each step also records the reference the
 /// decoder expected at that position. The trace is captured from the very path
 /// that validates the value — there is no second parser and no hand-written
@@ -1345,7 +1345,7 @@ impl TracedDerive {
         match self.input.data {
             Data::Struct(data) => StructTrace::new(name, generics, data).expand(),
             Data::Enum(data) => EnumTrace::new(name, generics, data).expand(),
-            Data::Union(_) => Error::new_spanned(name, "NotaDecodeTraced does not support unions")
+            Data::Union(_) => Error::new_spanned(name, "DotosDecodeTraced does not support unions")
                 .to_compile_error(),
         }
     }
@@ -1380,29 +1380,29 @@ impl StructTrace {
                     .map(|(index, field)| TracedFieldStep::new(index, field).body_named())
                     .collect::<Vec<_>>();
                 quote! {
-                    impl #implementation_generics ::nota::NotaDecodeTraced for #name #type_generics #where_clause {
-                        fn instance_reference() -> ::nota::TypeReference {
-                            ::nota::TypeReference::named(#type_name)
+                    impl #implementation_generics ::dotos::DotosDecodeTraced for #name #type_generics #where_clause {
+                        fn instance_reference() -> ::dotos::TypeReference {
+                            ::dotos::TypeReference::named(#type_name)
                         }
 
-                        fn from_nota_block_traced(
-                            block: &::nota::Block,
-                        ) -> ::std::result::Result<::nota::DecodedWithSchema<Self>, ::nota::NotaDecodeError> {
-                            let children = ::nota::NotaBlock::new(block).expect_children(
-                                ::nota::Delimiter::Brace,
+                        fn from_dotos_block_traced(
+                            block: &::dotos::Block,
+                        ) -> ::std::result::Result<::dotos::DecodedWithSchema<Self>, ::dotos::DotosDecodeError> {
+                            let children = ::dotos::DotosBlock::new(block).expect_children(
+                                ::dotos::Delimiter::Brace,
                                 #type_name,
                                 #field_count,
                             )?;
-                            let mut nodes: ::std::vec::Vec<::nota::InstanceSchema> =
+                            let mut nodes: ::std::vec::Vec<::dotos::InstanceSchema> =
                                 ::std::vec::Vec::with_capacity(#field_count);
                             let value = Self {
                                 #(#field_steps,)*
                             };
-                            ::std::result::Result::Ok(::nota::DecodedWithSchema::new(
+                            ::std::result::Result::Ok(::dotos::DecodedWithSchema::new(
                                 value,
-                                ::nota::InstanceSchema::new(
-                                    <Self as ::nota::NotaDecodeTraced>::instance_reference(),
-                                    ::nota::InstanceSchemaBody::Struct(nodes),
+                                ::dotos::InstanceSchema::new(
+                                    <Self as ::dotos::DotosDecodeTraced>::instance_reference(),
+                                    ::dotos::InstanceSchemaBody::Struct(nodes),
                                 ),
                             ))
                         }
@@ -1412,21 +1412,21 @@ impl StructTrace {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
-                    impl #implementation_generics ::nota::NotaDecodeTraced for #name #type_generics #where_clause {
-                        fn instance_reference() -> ::nota::TypeReference {
-                            ::nota::TypeReference::named(#type_name)
+                    impl #implementation_generics ::dotos::DotosDecodeTraced for #name #type_generics #where_clause {
+                        fn instance_reference() -> ::dotos::TypeReference {
+                            ::dotos::TypeReference::named(#type_name)
                         }
 
-                        fn from_nota_block_traced(
-                            block: &::nota::Block,
-                        ) -> ::std::result::Result<::nota::DecodedWithSchema<Self>, ::nota::NotaDecodeError> {
-                            let inner = <#field_type as ::nota::NotaDecodeTraced>::from_nota_block_traced(block)?;
+                        fn from_dotos_block_traced(
+                            block: &::dotos::Block,
+                        ) -> ::std::result::Result<::dotos::DecodedWithSchema<Self>, ::dotos::DotosDecodeError> {
+                            let inner = <#field_type as ::dotos::DotosDecodeTraced>::from_dotos_block_traced(block)?;
                             let (inner_value, inner_schema) = inner.into_parts();
-                            ::std::result::Result::Ok(::nota::DecodedWithSchema::new(
+                            ::std::result::Result::Ok(::dotos::DecodedWithSchema::new(
                                 Self(inner_value),
-                                ::nota::InstanceSchema::new(
-                                    <Self as ::nota::NotaDecodeTraced>::instance_reference(),
-                                    ::nota::InstanceSchemaBody::Newtype(::std::boxed::Box::new(inner_schema)),
+                                ::dotos::InstanceSchema::new(
+                                    <Self as ::dotos::DotosDecodeTraced>::instance_reference(),
+                                    ::dotos::InstanceSchemaBody::Newtype(::std::boxed::Box::new(inner_schema)),
                                 ),
                             ))
                         }
@@ -1435,12 +1435,12 @@ impl StructTrace {
             }
             Fields::Unnamed(fields) => Error::new_spanned(
                 fields,
-                "NotaDecodeTraced supports named structs or one-field tuple newtypes",
+                "DotosDecodeTraced supports named structs or one-field tuple newtypes",
             )
             .to_compile_error(),
             Fields::Unit => Error::new_spanned(
                 name,
-                "NotaDecodeTraced supports named structs or one-field tuple newtypes",
+                "DotosDecodeTraced supports named structs or one-field tuple newtypes",
             )
             .to_compile_error(),
         }
@@ -1463,7 +1463,7 @@ impl<'field> TracedFieldStep<'field> {
         let index = Index::from(self.index);
         quote! {
             #name: {
-                let decoded = <#field_type as ::nota::NotaDecodeTraced>::from_nota_block_traced(&children[#index])?;
+                let decoded = <#field_type as ::dotos::DotosDecodeTraced>::from_dotos_block_traced(&children[#index])?;
                 let (field_value, field_schema) = decoded.into_parts();
                 nodes.push(field_schema);
                 field_value
@@ -1511,7 +1511,7 @@ impl EnumTrace {
         let atom_branch = if unit_arms.is_empty() {
             quote! {
                 if let Some(variant) = block.demote_to_string() {
-                    return ::std::result::Result::Err(::nota::NotaDecodeError::UnknownVariant {
+                    return ::std::result::Result::Err(::dotos::DotosDecodeError::UnknownVariant {
                         enum_name: #enum_name,
                         variant: variant.to_owned(),
                     });
@@ -1522,39 +1522,39 @@ impl EnumTrace {
                 if let Some(variant) = block.demote_to_string() {
                     let value = match variant {
                         #(#unit_arms)*
-                        other => return ::std::result::Result::Err(::nota::NotaDecodeError::UnknownVariant {
+                        other => return ::std::result::Result::Err(::dotos::DotosDecodeError::UnknownVariant {
                             enum_name: #enum_name,
                             variant: other.to_owned(),
                         }),
                     };
-                    return ::std::result::Result::Ok(::nota::DecodedWithSchema::new(
+                    return ::std::result::Result::Ok(::dotos::DecodedWithSchema::new(
                         value,
-                        ::nota::InstanceSchema::new(expected, ::nota::InstanceSchemaBody::EnumPayload(::std::option::Option::None)),
+                        ::dotos::InstanceSchema::new(expected, ::dotos::InstanceSchemaBody::EnumPayload(::std::option::Option::None)),
                     ));
                 }
             }
         };
         quote! {
-            impl #implementation_generics ::nota::NotaDecodeTraced for #name #type_generics #where_clause {
-                fn instance_reference() -> ::nota::TypeReference {
-                    ::nota::TypeReference::named(#enum_name)
+            impl #implementation_generics ::dotos::DotosDecodeTraced for #name #type_generics #where_clause {
+                fn instance_reference() -> ::dotos::TypeReference {
+                    ::dotos::TypeReference::named(#enum_name)
                 }
 
-                fn from_nota_block_traced(
-                    block: &::nota::Block,
-                ) -> ::std::result::Result<::nota::DecodedWithSchema<Self>, ::nota::NotaDecodeError> {
-                    let expected = <Self as ::nota::NotaDecodeTraced>::instance_reference();
+                fn from_dotos_block_traced(
+                    block: &::dotos::Block,
+                ) -> ::std::result::Result<::dotos::DecodedWithSchema<Self>, ::dotos::DotosDecodeError> {
+                    let expected = <Self as ::dotos::DotosDecodeTraced>::instance_reference();
                     #atom_branch
-                    let (head, payload) = block.as_application().ok_or(::nota::NotaDecodeError::ExpectedDelimited {
+                    let (head, payload) = block.as_application().ok_or(::dotos::DotosDecodeError::ExpectedDelimited {
                         type_name: #enum_name,
                         delimiter: "unit-variant atom or Variant.payload application",
                     })?;
-                    let variant = head.demote_to_string().ok_or(::nota::NotaDecodeError::ExpectedAtom {
+                    let variant = head.demote_to_string().ok_or(::dotos::DotosDecodeError::ExpectedAtom {
                         type_name: "enum variant",
                     })?;
                     match variant {
                         #(#payload_arms)*
-                        other => ::std::result::Result::Err(::nota::NotaDecodeError::UnknownVariant {
+                        other => ::std::result::Result::Err(::dotos::DotosDecodeError::UnknownVariant {
                             enum_name: #enum_name,
                             variant: other.to_owned(),
                         }),
@@ -1604,13 +1604,13 @@ impl<'variant> TracedPayloadVariant<'variant> {
                 let field_type = &fields.unnamed.first().expect("one field checked").ty;
                 quote! {
                     #tag => {
-                        let decoded_payload = <#field_type as ::nota::NotaDecodeTraced>::from_nota_block_traced(payload)?;
+                        let decoded_payload = <#field_type as ::dotos::DotosDecodeTraced>::from_dotos_block_traced(payload)?;
                         let (payload_value, payload_schema) = decoded_payload.into_parts();
-                        ::std::result::Result::Ok(::nota::DecodedWithSchema::new(
+                        ::std::result::Result::Ok(::dotos::DecodedWithSchema::new(
                             #enum_name::#variant_name(payload_value),
-                            ::nota::InstanceSchema::new(
+                            ::dotos::InstanceSchema::new(
                                 expected,
-                                ::nota::InstanceSchemaBody::EnumPayload(::std::option::Option::Some(::std::boxed::Box::new(payload_schema))),
+                                ::dotos::InstanceSchemaBody::EnumPayload(::std::option::Option::Some(::std::boxed::Box::new(payload_schema))),
                             ),
                         ))
                     }
@@ -1618,12 +1618,12 @@ impl<'variant> TracedPayloadVariant<'variant> {
             }
             Fields::Unnamed(_) => Error::new_spanned(
                 variant_name,
-                "NotaDecodeTraced enum payload variants must carry exactly one unnamed field",
+                "DotosDecodeTraced enum payload variants must carry exactly one unnamed field",
             )
             .to_compile_error(),
             Fields::Named(fields) => Error::new_spanned(
                 fields,
-                "NotaDecodeTraced enum payload variants must carry one unnamed field, not named fields",
+                "DotosDecodeTraced enum payload variants must carry one unnamed field, not named fields",
             )
             .to_compile_error(),
             Fields::Unit => {
@@ -1648,7 +1648,7 @@ impl GenericsWithTracedBound {
             if let GenericParam::Type(type_parameter) = parameter {
                 type_parameter
                     .bounds
-                    .push(syn::parse_quote!(::nota::NotaDecodeTraced));
+                    .push(syn::parse_quote!(::dotos::DotosDecodeTraced));
             }
         }
         self.generics

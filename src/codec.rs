@@ -4,7 +4,7 @@ use std::fmt;
 use crate::{Block, Delimiter, Document, expectation::DottedExpectation, parser::AtomCharacter};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NotaDecodeError {
+pub enum DotosDecodeError {
     Parse(String),
     ExpectedSingleRoot {
         found: usize,
@@ -49,14 +49,14 @@ pub enum NotaDecodeError {
     },
 }
 
-impl fmt::Display for NotaDecodeError {
+impl fmt::Display for DotosDecodeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Parse(error) => write!(formatter, "{error}"),
             Self::ExpectedSingleRoot { found } => {
                 write!(
                     formatter,
-                    "expected exactly one NOTA root object, found {found}"
+                    "expected exactly one DOTOS root object, found {found}"
                 )
             }
             Self::ExpectedDelimited {
@@ -108,94 +108,94 @@ impl fmt::Display for NotaDecodeError {
     }
 }
 
-impl std::error::Error for NotaDecodeError {}
+impl std::error::Error for DotosDecodeError {}
 
-impl From<crate::NotaError> for NotaDecodeError {
-    fn from(error: crate::NotaError) -> Self {
+impl From<crate::DotosError> for DotosDecodeError {
+    fn from(error: crate::DotosError) -> Self {
         Self::Parse(error.to_string())
     }
 }
 
-pub trait NotaDecode: Sized {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError>;
+pub trait DotosDecode: Sized {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError>;
 }
 
-pub trait NotaEncode {
-    fn to_nota(&self) -> String;
+pub trait DotosEncode {
+    fn to_dotos(&self) -> String;
 }
 
-pub trait NotaBodyDecode: Sized {
-    fn from_nota_body(body: &NotaBody<'_>) -> Result<Self, NotaDecodeError>;
+pub trait DotosBodyDecode: Sized {
+    fn from_dotos_body(body: &DotosBody<'_>) -> Result<Self, DotosDecodeError>;
 }
 
-pub trait NotaBodyEncode {
-    fn to_nota_body(&self) -> NotaBodyEncoding;
+pub trait DotosBodyEncode {
+    fn to_dotos_body(&self) -> DotosBodyEncoding;
 }
 
-pub trait NotaDocumentDecode: Sized {
-    fn from_nota_document_body(body: &NotaDocumentBody<'_>) -> Result<Self, NotaDecodeError>;
+pub trait DotosDocumentDecode: Sized {
+    fn from_dotos_document_body(body: &DotosDocumentBody<'_>) -> Result<Self, DotosDecodeError>;
 }
 
-pub trait NotaDocumentEncode {
-    fn to_nota_document_body(&self) -> NotaDocumentEncoding;
+pub trait DotosDocumentEncode {
+    fn to_dotos_document_body(&self) -> DotosDocumentEncoding;
 }
 
-pub trait NotaNamedDocumentFieldDecode: Sized {
-    fn from_nota_named_document_field(
+pub trait DotosNamedDocumentFieldDecode: Sized {
+    fn from_dotos_named_document_field(
         name: &'static str,
         block: &Block,
-    ) -> Result<Self, NotaDecodeError>;
+    ) -> Result<Self, DotosDecodeError>;
 }
 
-pub trait NotaNamedDocumentFieldEncode {
-    fn to_nota_named_document_field_body(&self) -> String;
+pub trait DotosNamedDocumentFieldEncode {
+    fn to_dotos_named_document_field_body(&self) -> String;
 }
 
-pub trait NotaNamedBodyFieldDecode: Sized {
-    fn from_nota_named_body_field(
+pub trait DotosNamedBodyFieldDecode: Sized {
+    fn from_dotos_named_body_field(
         name: &'static str,
         block: &Block,
-    ) -> Result<Self, NotaDecodeError>;
+    ) -> Result<Self, DotosDecodeError>;
 }
 
-pub trait NotaNamedBodyFieldEncode {
-    fn to_nota_named_body_field(&self) -> String;
+pub trait DotosNamedBodyFieldEncode {
+    fn to_dotos_named_body_field(&self) -> String;
 }
 
-impl<Value> NotaNamedBodyFieldDecode for Value
+impl<Value> DotosNamedBodyFieldDecode for Value
 where
-    Value: NotaNamedDocumentFieldDecode,
+    Value: DotosNamedDocumentFieldDecode,
 {
-    fn from_nota_named_body_field(
+    fn from_dotos_named_body_field(
         name: &'static str,
         block: &Block,
-    ) -> Result<Self, NotaDecodeError> {
-        Value::from_nota_named_document_field(name, block)
+    ) -> Result<Self, DotosDecodeError> {
+        Value::from_dotos_named_document_field(name, block)
     }
 }
 
-impl<Value> NotaNamedBodyFieldEncode for Value
+impl<Value> DotosNamedBodyFieldEncode for Value
 where
-    Value: NotaNamedDocumentFieldEncode,
+    Value: DotosNamedDocumentFieldEncode,
 {
-    fn to_nota_named_body_field(&self) -> String {
-        self.to_nota_named_document_field_body()
+    fn to_dotos_named_body_field(&self) -> String {
+        self.to_dotos_named_document_field_body()
     }
 }
 
-pub struct NotaSource<'source> {
+pub struct DotosSource<'source> {
     source: &'source str,
 }
 
-impl<'source> NotaSource<'source> {
+impl<'source> DotosSource<'source> {
     pub fn new(source: &'source str) -> Self {
         Self { source }
     }
 
-    pub fn parse_root(&self) -> Result<Block, NotaDecodeError> {
+    pub fn parse_root(&self) -> Result<Block, DotosDecodeError> {
         let document = Document::parse(self.source)?;
         if document.holds_root_objects() != 1 {
-            return Err(NotaDecodeError::ExpectedSingleRoot {
+            return Err(DotosDecodeError::ExpectedSingleRoot {
                 found: document.holds_root_objects(),
             });
         }
@@ -205,39 +205,39 @@ impl<'source> NotaSource<'source> {
             .clone())
     }
 
-    pub fn parse<Value>(&self) -> Result<Value, NotaDecodeError>
+    pub fn parse<Value>(&self) -> Result<Value, DotosDecodeError>
     where
-        Value: NotaDecode,
+        Value: DotosDecode,
     {
         let root = self.parse_root()?;
-        Value::from_nota_block(&root)
+        Value::from_dotos_block(&root)
     }
 
-    pub fn parse_document_body<Value>(&self) -> Result<Value, NotaDecodeError>
+    pub fn parse_document_body<Value>(&self) -> Result<Value, DotosDecodeError>
     where
-        Value: NotaDocumentDecode,
+        Value: DotosDocumentDecode,
     {
         let document = Document::parse(self.source)?;
-        let body = NotaDocumentBody::new(&document);
-        Value::from_nota_document_body(&body)
+        let body = DotosDocumentBody::new(&document);
+        Value::from_dotos_document_body(&body)
     }
 
-    pub fn parse_body<Value>(&self) -> Result<Value, NotaDecodeError>
+    pub fn parse_body<Value>(&self) -> Result<Value, DotosDecodeError>
     where
-        Value: NotaBodyDecode,
+        Value: DotosBodyDecode,
     {
         let document = Document::parse(self.source)?;
-        let body = NotaBody::from_document(&document);
-        Value::from_nota_body(&body)
+        let body = DotosBody::from_document(&document);
+        Value::from_dotos_body(&body)
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct NotaBody<'body> {
+pub struct DotosBody<'body> {
     root_objects: &'body [Block],
 }
 
-impl<'body> NotaBody<'body> {
+impl<'body> DotosBody<'body> {
     pub fn new(root_objects: &'body [Block]) -> Self {
         Self { root_objects }
     }
@@ -250,11 +250,11 @@ impl<'body> NotaBody<'body> {
         block: &'body Block,
         delimiter: Delimiter,
         type_name: &'static str,
-    ) -> Result<Self, NotaDecodeError> {
+    ) -> Result<Self, DotosDecodeError> {
         let root_objects =
             block
                 .as_delimited(delimiter)
-                .ok_or(NotaDecodeError::ExpectedDelimited {
+                .ok_or(DotosDecodeError::ExpectedDelimited {
                     type_name,
                     delimiter: delimiter.description(),
                 })?;
@@ -269,10 +269,10 @@ impl<'body> NotaBody<'body> {
         &self,
         type_name: &'static str,
         expected: usize,
-    ) -> Result<&'body [Block], NotaDecodeError> {
+    ) -> Result<&'body [Block], DotosDecodeError> {
         let found = self.root_objects().len();
         if found != expected {
-            return Err(NotaDecodeError::ExpectedRootCount {
+            return Err(DotosDecodeError::ExpectedRootCount {
                 type_name,
                 expected,
                 found,
@@ -282,22 +282,22 @@ impl<'body> NotaBody<'body> {
     }
 }
 
-pub struct NotaDocumentBody<'document> {
-    body: NotaBody<'document>,
+pub struct DotosDocumentBody<'document> {
+    body: DotosBody<'document>,
 }
 
-impl<'document> NotaDocumentBody<'document> {
+impl<'document> DotosDocumentBody<'document> {
     pub fn new(document: &'document Document) -> Self {
         Self {
-            body: NotaBody::from_document(document),
+            body: DotosBody::from_document(document),
         }
     }
 
-    pub fn from_body(body: NotaBody<'document>) -> Self {
+    pub fn from_body(body: DotosBody<'document>) -> Self {
         Self { body }
     }
 
-    pub fn as_body(&self) -> &NotaBody<'document> {
+    pub fn as_body(&self) -> &DotosBody<'document> {
         &self.body
     }
 
@@ -309,16 +309,16 @@ impl<'document> NotaDocumentBody<'document> {
         &self,
         type_name: &'static str,
         expected: usize,
-    ) -> Result<&'document [Block], NotaDecodeError> {
+    ) -> Result<&'document [Block], DotosDecodeError> {
         self.body.expect_fields(type_name, expected)
     }
 }
 
-pub struct NotaBodyEncoding {
+pub struct DotosBodyEncoding {
     fields: Vec<String>,
 }
 
-impl NotaBodyEncoding {
+impl DotosBodyEncoding {
     pub fn new(fields: Vec<String>) -> Self {
         Self { fields }
     }
@@ -327,22 +327,22 @@ impl NotaBodyEncoding {
         &self.fields
     }
 
-    pub fn to_nota(&self) -> String {
+    pub fn to_dotos(&self) -> String {
         self.fields.join("\n")
     }
 
-    pub fn to_delimited_nota(&self, delimiter: Delimiter) -> String {
+    pub fn to_delimited_dotos(&self, delimiter: Delimiter) -> String {
         delimiter.wrap(self.fields.iter().cloned())
     }
 }
 
-pub type NotaDocumentEncoding = NotaBodyEncoding;
+pub type DotosDocumentEncoding = DotosBodyEncoding;
 
-pub struct NotaBlock<'block> {
+pub struct DotosBlock<'block> {
     block: &'block Block,
 }
 
-impl<'block> NotaBlock<'block> {
+impl<'block> DotosBlock<'block> {
     pub fn new(block: &'block Block) -> Self {
         Self { block }
     }
@@ -352,7 +352,7 @@ impl<'block> NotaBlock<'block> {
         delimiter: Delimiter,
         type_name: &'static str,
         expected: usize,
-    ) -> Result<&'block [Block], NotaDecodeError> {
+    ) -> Result<&'block [Block], DotosDecodeError> {
         self.expect_body(delimiter, type_name)?
             .expect_fields(type_name, expected)
     }
@@ -361,7 +361,7 @@ impl<'block> NotaBlock<'block> {
         &self,
         delimiter: Delimiter,
         type_name: &'static str,
-    ) -> Result<&'block [Block], NotaDecodeError> {
+    ) -> Result<&'block [Block], DotosDecodeError> {
         Ok(self.expect_body(delimiter, type_name)?.root_objects())
     }
 
@@ -369,11 +369,11 @@ impl<'block> NotaBlock<'block> {
         &self,
         delimiter: Delimiter,
         type_name: &'static str,
-    ) -> Result<NotaBody<'block>, NotaDecodeError> {
-        NotaBody::from_delimited(self.block, delimiter, type_name)
+    ) -> Result<DotosBody<'block>, DotosDecodeError> {
+        DotosBody::from_delimited(self.block, delimiter, type_name)
     }
 
-    pub fn parse_string(&self) -> Result<String, NotaDecodeError> {
+    pub fn parse_string(&self) -> Result<String, DotosDecodeError> {
         // Pipe text carries a literal, but a pipe wrapper around content that a
         // simpler canonical form could hold is non-canonical and rejected.
         if self.block.is_pipe_text() {
@@ -381,7 +381,7 @@ impl<'block> NotaBlock<'block> {
                 .block
                 .demote_to_string()
                 .expect("pipe text demotes to its literal");
-            NotaString::new(text).reject_redundant_delimiter(StringForm::PipeText)?;
+            DotosString::new(text).reject_redundant_delimiter(StringForm::PipeText)?;
             return Ok(text.to_owned());
         }
         // A bare atom or a dotted chain of atoms is the string's flat text: an
@@ -397,65 +397,65 @@ impl<'block> NotaBlock<'block> {
         if let Some(root_objects) = self.block.as_delimited(Delimiter::Parenthesis) {
             let text = root_objects
                 .iter()
-                .map(|block| NotaBlock::new(block).parse_string())
+                .map(|block| DotosBlock::new(block).parse_string())
                 .collect::<Result<Vec<_>, _>>()
                 .map(|parts| parts.join(" "))?;
-            NotaString::new(&text).reject_redundant_delimiter(StringForm::Parenthesis)?;
+            DotosString::new(&text).reject_redundant_delimiter(StringForm::Parenthesis)?;
             return Ok(text);
         }
-        Err(NotaDecodeError::ExpectedDelimited {
+        Err(DotosDecodeError::ExpectedDelimited {
             type_name: "String",
             delimiter: "string atom, dotted application, or parenthesis",
         })
     }
 
-    pub fn parse_integer(&self) -> Result<u64, NotaDecodeError> {
+    pub fn parse_integer(&self) -> Result<u64, DotosDecodeError> {
         let value = self.parse_numeric_text("Integer")?;
         value
             .parse::<u64>()
-            .map_err(|_| NotaDecodeError::InvalidInteger { value })
+            .map_err(|_| DotosDecodeError::InvalidInteger { value })
     }
 
-    pub fn parse_u16(&self) -> Result<u16, NotaDecodeError> {
+    pub fn parse_u16(&self) -> Result<u16, DotosDecodeError> {
         let value = self.parse_integer()?;
-        u16::try_from(value).map_err(|_| NotaDecodeError::InvalidInteger {
+        u16::try_from(value).map_err(|_| DotosDecodeError::InvalidInteger {
             value: value.to_string(),
         })
     }
 
-    pub fn parse_u8(&self) -> Result<u8, NotaDecodeError> {
+    pub fn parse_u8(&self) -> Result<u8, DotosDecodeError> {
         let value = self.parse_integer()?;
-        u8::try_from(value).map_err(|_| NotaDecodeError::InvalidInteger {
+        u8::try_from(value).map_err(|_| DotosDecodeError::InvalidInteger {
             value: value.to_string(),
         })
     }
 
-    pub fn parse_u32(&self) -> Result<u32, NotaDecodeError> {
+    pub fn parse_u32(&self) -> Result<u32, DotosDecodeError> {
         let value = self.parse_integer()?;
-        u32::try_from(value).map_err(|_| NotaDecodeError::InvalidInteger {
+        u32::try_from(value).map_err(|_| DotosDecodeError::InvalidInteger {
             value: value.to_string(),
         })
     }
 
-    pub fn parse_signed_integer(&self) -> Result<i64, NotaDecodeError> {
+    pub fn parse_signed_integer(&self) -> Result<i64, DotosDecodeError> {
         let value = self.parse_numeric_text("SignedInteger")?;
         value
             .parse::<i64>()
-            .map_err(|_| NotaDecodeError::InvalidInteger { value })
+            .map_err(|_| DotosDecodeError::InvalidInteger { value })
     }
 
-    pub fn parse_i32(&self) -> Result<i32, NotaDecodeError> {
+    pub fn parse_i32(&self) -> Result<i32, DotosDecodeError> {
         let value = self.parse_signed_integer()?;
-        i32::try_from(value).map_err(|_| NotaDecodeError::InvalidInteger {
+        i32::try_from(value).map_err(|_| DotosDecodeError::InvalidInteger {
             value: value.to_string(),
         })
     }
 
-    pub fn parse_float(&self) -> Result<f64, NotaDecodeError> {
+    pub fn parse_float(&self) -> Result<f64, DotosDecodeError> {
         let value = self.parse_numeric_text("Float")?;
         value
             .parse::<f64>()
-            .map_err(|_| NotaDecodeError::InvalidValue {
+            .map_err(|_| DotosDecodeError::InvalidValue {
                 type_name: "Float",
                 value,
                 reason: "expected a finite or non-finite Rust f64 literal".to_owned(),
@@ -467,23 +467,23 @@ impl<'block> NotaBlock<'block> {
     /// its literal is reconstructed from the dotted segments rather than read
     /// as a single atom; a period-free integer is a bare atom whose text is the
     /// same reconstruction of one segment.
-    fn parse_numeric_text(&self, type_name: &'static str) -> Result<String, NotaDecodeError> {
+    fn parse_numeric_text(&self, type_name: &'static str) -> Result<String, DotosDecodeError> {
         self.block
             .dotted_text()
-            .ok_or(NotaDecodeError::ExpectedAtom { type_name })
+            .ok_or(DotosDecodeError::ExpectedAtom { type_name })
     }
 
-    pub fn parse_boolean(&self) -> Result<bool, NotaDecodeError> {
+    pub fn parse_boolean(&self) -> Result<bool, DotosDecodeError> {
         let value = self
             .block
             .demote_to_string()
-            .ok_or(NotaDecodeError::ExpectedAtom {
+            .ok_or(DotosDecodeError::ExpectedAtom {
                 type_name: "Boolean",
             })?;
         match value {
             "True" => Ok(true),
             "False" => Ok(false),
-            other => Err(NotaDecodeError::UnknownVariant {
+            other => Err(DotosDecodeError::UnknownVariant {
                 enum_name: "Boolean",
                 variant: other.to_owned(),
             }),
@@ -491,8 +491,8 @@ impl<'block> NotaBlock<'block> {
     }
 }
 
-/// The one canonical NOTA surface form a string's content takes. The forms are
-/// mutually exclusive by construction — [`NotaString::canonical_form`] picks the
+/// The one canonical DOTOS surface form a string's content takes. The forms are
+/// mutually exclusive by construction — [`DotosString::canonical_form`] picks the
 /// least-delimited form that carries the content faithfully — so both the
 /// encoder and the redundant-delimiter check read a single classification rather
 /// than scattering per-character conditionals.
@@ -503,11 +503,11 @@ enum StringForm {
     PipeText,
 }
 
-pub struct NotaString<'value> {
+pub struct DotosString<'value> {
     value: &'value str,
 }
 
-impl<'value> NotaString<'value> {
+impl<'value> DotosString<'value> {
     pub fn new(value: &'value str) -> Self {
         Self { value }
     }
@@ -520,7 +520,7 @@ impl<'value> NotaString<'value> {
         }
     }
 
-    /// The single canonical NOTA form for this string's content. The three forms
+    /// The single canonical DOTOS form for this string's content. The three forms
     /// are ordered by how little delimiter they spend, and the first one that can
     /// carry the content faithfully wins, so each form narrows to its honest role:
     ///
@@ -582,12 +582,12 @@ impl<'value> NotaString<'value> {
         }
         self.value
             .split(' ')
-            .all(|word| NotaString::new(word).qualifies_as_bare_dotted_string())
+            .all(|word| DotosString::new(word).qualifies_as_bare_dotted_string())
     }
 
-    fn reject_redundant_delimiter(&self, used: StringForm) -> Result<(), NotaDecodeError> {
+    fn reject_redundant_delimiter(&self, used: StringForm) -> Result<(), DotosDecodeError> {
         if self.canonical_form() != used {
-            return Err(NotaDecodeError::NonCanonicalStringDelimiter {
+            return Err(DotosDecodeError::NonCanonicalStringDelimiter {
                 value: self.value.to_owned(),
                 canonical: self.format(),
             });
@@ -613,11 +613,11 @@ impl<'value> NotaString<'value> {
     }
 }
 
-pub struct NotaCollection<'block> {
+pub struct DotosCollection<'block> {
     block: &'block Block,
 }
 
-impl<'block> NotaCollection<'block> {
+impl<'block> DotosCollection<'block> {
     pub fn new(block: &'block Block) -> Self {
         Self { block }
     }
@@ -625,13 +625,13 @@ impl<'block> NotaCollection<'block> {
     pub fn parse_vector<Element, Parse>(
         &self,
         parse: Parse,
-    ) -> Result<Vec<Element>, NotaDecodeError>
+    ) -> Result<Vec<Element>, DotosDecodeError>
     where
-        Parse: FnMut(&Block) -> Result<Element, NotaDecodeError>,
+        Parse: FnMut(&Block) -> Result<Element, DotosDecodeError>,
     {
         self.block
             .as_delimited(Delimiter::SquareBracket)
-            .ok_or(NotaDecodeError::ExpectedDelimited {
+            .ok_or(DotosDecodeError::ExpectedDelimited {
                 type_name: "Vec",
                 delimiter: Delimiter::SquareBracket.description(),
             })?
@@ -644,27 +644,27 @@ impl<'block> NotaCollection<'block> {
         &self,
         mut parse_key: ParseKey,
         mut parse_value: ParseValue,
-    ) -> Result<BTreeMap<Key, Value>, NotaDecodeError>
+    ) -> Result<BTreeMap<Key, Value>, DotosDecodeError>
     where
         Key: Ord,
-        ParseKey: FnMut(&Block) -> Result<Key, NotaDecodeError>,
-        ParseValue: FnMut(&Block) -> Result<Value, NotaDecodeError>,
+        ParseKey: FnMut(&Block) -> Result<Key, DotosDecodeError>,
+        ParseValue: FnMut(&Block) -> Result<Value, DotosDecodeError>,
     {
         let (head, payload) =
             self.block
                 .as_application()
-                .ok_or(NotaDecodeError::ExpectedDelimited {
+                .ok_or(DotosDecodeError::ExpectedDelimited {
                     type_name: "Map",
                     delimiter: "Map.( … ) application",
                 })?;
         if head.demote_to_string() != Some("Map") {
-            return Err(NotaDecodeError::UnknownVariant {
+            return Err(DotosDecodeError::UnknownVariant {
                 enum_name: "Map",
                 variant: head.dotted_text().unwrap_or_default(),
             });
         }
         let entries = payload.as_delimited(Delimiter::Parenthesis).ok_or(
-            NotaDecodeError::ExpectedDelimited {
+            DotosDecodeError::ExpectedDelimited {
                 type_name: "Map",
                 delimiter: Delimiter::Parenthesis.description(),
             },
@@ -683,9 +683,9 @@ impl<'block> NotaCollection<'block> {
     pub fn parse_option<Inner, Parse>(
         &self,
         mut parse: Parse,
-    ) -> Result<Option<Inner>, NotaDecodeError>
+    ) -> Result<Option<Inner>, DotosDecodeError>
     where
-        Parse: FnMut(&Block) -> Result<Inner, NotaDecodeError>,
+        Parse: FnMut(&Block) -> Result<Inner, DotosDecodeError>,
     {
         if self.block.demote_to_string() == Some("None") {
             return Ok(None);
@@ -693,17 +693,17 @@ impl<'block> NotaCollection<'block> {
         let (head, payload) =
             self.block
                 .as_application()
-                .ok_or(NotaDecodeError::ExpectedDelimited {
+                .ok_or(DotosDecodeError::ExpectedDelimited {
                     type_name: "Option",
                     delimiter: "None atom or Some.payload application",
                 })?;
         let tag = head
             .demote_to_string()
-            .ok_or(NotaDecodeError::ExpectedAtom {
+            .ok_or(DotosDecodeError::ExpectedAtom {
                 type_name: "Option tag",
             })?;
         if tag != "Some" {
-            return Err(NotaDecodeError::UnknownVariant {
+            return Err(DotosDecodeError::UnknownVariant {
                 enum_name: "Option",
                 variant: tag.to_owned(),
             });
@@ -712,110 +712,110 @@ impl<'block> NotaCollection<'block> {
     }
 }
 
-impl NotaDecode for String {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaBlock::new(block).parse_string()
+impl DotosDecode for String {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosBlock::new(block).parse_string()
     }
 }
 
-impl NotaEncode for String {
-    fn to_nota(&self) -> String {
-        NotaString::new(self).format()
+impl DotosEncode for String {
+    fn to_dotos(&self) -> String {
+        DotosString::new(self).format()
     }
 }
 
-impl NotaDecode for u64 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaBlock::new(block).parse_integer()
+impl DotosDecode for u64 {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosBlock::new(block).parse_integer()
     }
 }
 
-impl NotaEncode for u64 {
-    fn to_nota(&self) -> String {
+impl DotosEncode for u64 {
+    fn to_dotos(&self) -> String {
         self.to_string()
     }
 }
 
-impl NotaDecode for u8 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaBlock::new(block).parse_u8()
+impl DotosDecode for u8 {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosBlock::new(block).parse_u8()
     }
 }
 
-impl NotaEncode for u8 {
-    fn to_nota(&self) -> String {
+impl DotosEncode for u8 {
+    fn to_dotos(&self) -> String {
         self.to_string()
     }
 }
 
-impl NotaDecode for u16 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaBlock::new(block).parse_u16()
+impl DotosDecode for u16 {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosBlock::new(block).parse_u16()
     }
 }
 
-impl NotaEncode for u16 {
-    fn to_nota(&self) -> String {
+impl DotosEncode for u16 {
+    fn to_dotos(&self) -> String {
         self.to_string()
     }
 }
 
-impl NotaDecode for u32 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaBlock::new(block).parse_u32()
+impl DotosDecode for u32 {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosBlock::new(block).parse_u32()
     }
 }
 
-impl NotaEncode for u32 {
-    fn to_nota(&self) -> String {
+impl DotosEncode for u32 {
+    fn to_dotos(&self) -> String {
         self.to_string()
     }
 }
 
-impl NotaDecode for i32 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaBlock::new(block).parse_i32()
+impl DotosDecode for i32 {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosBlock::new(block).parse_i32()
     }
 }
 
-impl NotaEncode for i32 {
-    fn to_nota(&self) -> String {
+impl DotosEncode for i32 {
+    fn to_dotos(&self) -> String {
         self.to_string()
     }
 }
 
-impl NotaDecode for i64 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaBlock::new(block).parse_signed_integer()
+impl DotosDecode for i64 {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosBlock::new(block).parse_signed_integer()
     }
 }
 
-impl NotaEncode for i64 {
-    fn to_nota(&self) -> String {
+impl DotosEncode for i64 {
+    fn to_dotos(&self) -> String {
         self.to_string()
     }
 }
 
-impl NotaDecode for f64 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaBlock::new(block).parse_float()
+impl DotosDecode for f64 {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosBlock::new(block).parse_float()
     }
 }
 
-impl NotaEncode for f64 {
-    fn to_nota(&self) -> String {
+impl DotosEncode for f64 {
+    fn to_dotos(&self) -> String {
         self.to_string()
     }
 }
 
-impl NotaDecode for bool {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaBlock::new(block).parse_boolean()
+impl DotosDecode for bool {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosBlock::new(block).parse_boolean()
     }
 }
 
-impl NotaEncode for bool {
-    fn to_nota(&self) -> String {
+impl DotosEncode for bool {
+    fn to_dotos(&self) -> String {
         if *self {
             "True".to_owned()
         } else {
@@ -851,9 +851,9 @@ impl ByteSequence {
         self.0
     }
 
-    pub fn from_hex(text: &str) -> Result<Self, NotaDecodeError> {
+    pub fn from_hex(text: &str) -> Result<Self, DotosDecodeError> {
         if text.len() % 2 != 0 {
-            return Err(NotaDecodeError::Parse(format!(
+            return Err(DotosDecodeError::Parse(format!(
                 "byte sequence hex literal has odd length: {text}"
             )));
         }
@@ -866,11 +866,11 @@ impl ByteSequence {
         Ok(Self(bytes))
     }
 
-    fn hex_digit(digit: u8) -> Result<u8, NotaDecodeError> {
+    fn hex_digit(digit: u8) -> Result<u8, DotosDecodeError> {
         match digit {
             b'0'..=b'9' => Ok(digit - b'0'),
             b'a'..=b'f' => Ok(digit - b'a' + 10),
-            other => Err(NotaDecodeError::Parse(format!(
+            other => Err(DotosDecodeError::Parse(format!(
                 "byte sequence hex literal has a non-hex digit: {other}"
             ))),
         }
@@ -883,20 +883,20 @@ impl From<Vec<u8>> for ByteSequence {
     }
 }
 
-impl NotaDecode for ByteSequence {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        let hex = String::from_nota_block(block)?;
+impl DotosDecode for ByteSequence {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        let hex = String::from_dotos_block(block)?;
         Self::from_hex(&hex)
     }
 }
 
-impl NotaEncode for ByteSequence {
-    fn to_nota(&self) -> String {
+impl DotosEncode for ByteSequence {
+    fn to_dotos(&self) -> String {
         let mut hex = String::with_capacity(self.0.len() * 2);
         for byte in &self.0 {
             hex.push_str(&format!("{byte:02x}"));
         }
-        hex.to_nota()
+        hex.to_dotos()
     }
 }
 
@@ -927,9 +927,9 @@ impl<const WIDTH: usize> FixedByteSequence<WIDTH> {
         self.0
     }
 
-    pub fn from_hex(text: &str) -> Result<Self, NotaDecodeError> {
+    pub fn from_hex(text: &str) -> Result<Self, DotosDecodeError> {
         if text.len() != WIDTH * 2 {
-            return Err(NotaDecodeError::Parse(format!(
+            return Err(DotosDecodeError::Parse(format!(
                 "fixed byte sequence expected {} hex digits, found {}",
                 WIDTH * 2,
                 text.len()
@@ -942,11 +942,11 @@ impl<const WIDTH: usize> FixedByteSequence<WIDTH> {
         Ok(Self(bytes))
     }
 
-    fn hex_digit(digit: u8) -> Result<u8, NotaDecodeError> {
+    fn hex_digit(digit: u8) -> Result<u8, DotosDecodeError> {
         match digit {
             b'0'..=b'9' => Ok(digit - b'0'),
             b'a'..=b'f' => Ok(digit - b'a' + 10),
-            other => Err(NotaDecodeError::Parse(format!(
+            other => Err(DotosDecodeError::Parse(format!(
                 "fixed byte sequence hex literal has a non-hex digit: {other}"
             ))),
         }
@@ -959,121 +959,121 @@ impl<const WIDTH: usize> From<[u8; WIDTH]> for FixedByteSequence<WIDTH> {
     }
 }
 
-impl<const WIDTH: usize> NotaDecode for FixedByteSequence<WIDTH> {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        let hex = String::from_nota_block(block)?;
+impl<const WIDTH: usize> DotosDecode for FixedByteSequence<WIDTH> {
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        let hex = String::from_dotos_block(block)?;
         Self::from_hex(&hex)
     }
 }
 
-impl<const WIDTH: usize> NotaEncode for FixedByteSequence<WIDTH> {
-    fn to_nota(&self) -> String {
+impl<const WIDTH: usize> DotosEncode for FixedByteSequence<WIDTH> {
+    fn to_dotos(&self) -> String {
         let mut hex = String::with_capacity(WIDTH * 2);
         for byte in &self.0 {
             hex.push_str(&format!("{byte:02x}"));
         }
-        hex.to_nota()
+        hex.to_dotos()
     }
 }
 
-impl<Element> NotaDecode for Vec<Element>
+impl<Element> DotosDecode for Vec<Element>
 where
-    Element: NotaDecode,
+    Element: DotosDecode,
 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaCollection::new(block).parse_vector(Element::from_nota_block)
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosCollection::new(block).parse_vector(Element::from_dotos_block)
     }
 }
 
-impl<Element> NotaEncode for Vec<Element>
+impl<Element> DotosEncode for Vec<Element>
 where
-    Element: NotaEncode,
+    Element: DotosEncode,
 {
-    fn to_nota(&self) -> String {
-        Delimiter::SquareBracket.wrap(self.iter().map(Element::to_nota))
+    fn to_dotos(&self) -> String {
+        Delimiter::SquareBracket.wrap(self.iter().map(Element::to_dotos))
     }
 }
 
-impl<Element> NotaBodyDecode for Vec<Element>
+impl<Element> DotosBodyDecode for Vec<Element>
 where
-    Element: NotaDecode,
+    Element: DotosDecode,
 {
-    fn from_nota_body(body: &NotaBody<'_>) -> Result<Self, NotaDecodeError> {
+    fn from_dotos_body(body: &DotosBody<'_>) -> Result<Self, DotosDecodeError> {
         body.root_objects()
             .iter()
-            .map(Element::from_nota_block)
+            .map(Element::from_dotos_block)
             .collect()
     }
 }
 
-impl<Element> NotaBodyEncode for Vec<Element>
+impl<Element> DotosBodyEncode for Vec<Element>
 where
-    Element: NotaEncode,
+    Element: DotosEncode,
 {
-    fn to_nota_body(&self) -> NotaBodyEncoding {
-        NotaBodyEncoding::new(self.iter().map(Element::to_nota).collect())
+    fn to_dotos_body(&self) -> DotosBodyEncoding {
+        DotosBodyEncoding::new(self.iter().map(Element::to_dotos).collect())
     }
 }
 
-impl<Key, Value> NotaDecode for BTreeMap<Key, Value>
+impl<Key, Value> DotosDecode for BTreeMap<Key, Value>
 where
-    Key: NotaDecode + Ord,
-    Value: NotaDecode,
+    Key: DotosDecode + Ord,
+    Value: DotosDecode,
 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaCollection::new(block).parse_map(Key::from_nota_block, Value::from_nota_block)
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosCollection::new(block).parse_map(Key::from_dotos_block, Value::from_dotos_block)
     }
 }
 
-impl<Key, Value> NotaEncode for BTreeMap<Key, Value>
+impl<Key, Value> DotosEncode for BTreeMap<Key, Value>
 where
-    Key: NotaEncode,
-    Value: NotaEncode,
+    Key: DotosEncode,
+    Value: DotosEncode,
 {
-    fn to_nota(&self) -> String {
+    fn to_dotos(&self) -> String {
         let mut entries: Vec<String> = Vec::new();
         for (key, value) in self {
-            entries.push(format!("{}.{}", Key::to_nota(key), Value::to_nota(value)));
+            entries.push(format!("{}.{}", Key::to_dotos(key), Value::to_dotos(value)));
         }
         format!("Map.{}", Delimiter::Parenthesis.wrap(entries))
     }
 }
 
-impl<Inner> NotaDecode for Option<Inner>
+impl<Inner> DotosDecode for Option<Inner>
 where
-    Inner: NotaDecode,
+    Inner: DotosDecode,
 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        NotaCollection::new(block).parse_option(Inner::from_nota_block)
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        DotosCollection::new(block).parse_option(Inner::from_dotos_block)
     }
 }
 
-impl<Inner> NotaEncode for Option<Inner>
+impl<Inner> DotosEncode for Option<Inner>
 where
-    Inner: NotaEncode,
+    Inner: DotosEncode,
 {
-    fn to_nota(&self) -> String {
+    fn to_dotos(&self) -> String {
         match self {
-            Some(inner) => format!("Some.{}", Inner::to_nota(inner)),
+            Some(inner) => format!("Some.{}", Inner::to_dotos(inner)),
             None => "None".to_owned(),
         }
     }
 }
 
-impl<Inner> NotaDecode for Box<Inner>
+impl<Inner> DotosDecode for Box<Inner>
 where
-    Inner: NotaDecode,
+    Inner: DotosDecode,
 {
-    fn from_nota_block(block: &Block) -> Result<Self, NotaDecodeError> {
-        Inner::from_nota_block(block).map(Box::new)
+    fn from_dotos_block(block: &Block) -> Result<Self, DotosDecodeError> {
+        Inner::from_dotos_block(block).map(Box::new)
     }
 }
 
-impl<Inner> NotaEncode for Box<Inner>
+impl<Inner> DotosEncode for Box<Inner>
 where
-    Inner: NotaEncode,
+    Inner: DotosEncode,
 {
-    fn to_nota(&self) -> String {
-        Inner::to_nota(self)
+    fn to_dotos(&self) -> String {
+        Inner::to_dotos(self)
     }
 }

@@ -14,7 +14,7 @@
 //! shape is absent."
 //!
 //! The companion behavioural witnesses for the derive surface live in
-//! `tests/derive.rs` (round-trip behaviour of `NotaDecode` / `NotaEncode`).
+//! `tests/derive.rs` (round-trip behaviour of `DotosDecode` / `DotosEncode`).
 //! Those tests prove the derive *works*; this file proves the derive's
 //! internal nouns are shaped per workspace discipline.
 
@@ -75,7 +75,7 @@ fn field_encode_carries_field_data() {
     witness.must_contain("fn body_named(&self) -> Result<TokenStreamTwo, Error>", "2");
     witness.must_contain("self.field.ident.as_ref().expect(", "2");
     witness.must_contain(
-        "FieldNotaAttributes::from_attributes(&self.field.attrs)?",
+        "FieldDotosAttributes::from_attributes(&self.field.attrs)?",
         "2",
     );
 
@@ -130,8 +130,8 @@ fn codec_derive_wraps_syn_derive_input_with_methods() {
     );
 }
 
-/// Claim 3 — Both proc-macro entry points (`derive_nota_decode` and
-/// `derive_nota_encode`) construct a `CodecDerive` from the parsed input
+/// Claim 3 — Both proc-macro entry points (`derive_dotos_decode` and
+/// `derive_dotos_encode`) construct a `CodecDerive` from the parsed input
 /// and dispatch the operation through the wrapper, not through a free
 /// function. The wrapper IS the operation noun.
 #[test]
