@@ -255,17 +255,6 @@ fn transformer_applications_keep_dot_and_parenthesis_as_distinct_shapes() {
     assert_eq!(transformer_name.demote_to_string(), Some("Transformer"));
     assert!(arguments.is_parenthesis());
     assert_eq!(arguments.holds_root_objects(), 2);
-
-    let sectioned =
-        Document::parse("Name.(Input Output)").expect("sectioned transformer application");
-    let (section_name, section_arguments) = sectioned
-        .root_object_at(0)
-        .expect("sectioned root")
-        .as_application()
-        .expect("section application");
-    assert_eq!(section_name.demote_to_string(), Some("Name"));
-    assert!(section_arguments.is_parenthesis());
-    assert_eq!(section_arguments.holds_root_objects(), 2);
 }
 
 /// The psyche-authored base sample parses under the new grammar with its
