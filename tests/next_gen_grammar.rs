@@ -4,7 +4,8 @@
 //! raw-layer dot-application binding, its right-associative chaining, the
 //! glued-period constraint, the reconstruction of flat literals a structural
 //! period split apart, and the delimiter reshuffle (`{}` structs, `[]`
-//! vectors, `()` payloads, `(| |)` multiline strings) as it lands in the
+//! vectors, `()` payloads, curly-quoted strings, and bare-angle quality
+//! applications) as it lands in the
 //! codec. These are the acceptance witnesses cited by the wave-one report.
 
 use std::collections::BTreeMap;
@@ -119,16 +120,14 @@ fn float_literal_round_trips_through_its_structural_period() {
 
 /// Under the reshuffle a canonical string is a bare atom — a period-joined chain
 /// of bare atoms included, since an expected `String` reclaims the dotted text —
-/// a string carrying a space is parenthesized, and a string carrying a genuine
-/// structural character — a bracket, a comment marker, or a newline — takes the
-/// literal-preserving `(| … |)` multiline form.
+/// and every non-bare value uses the literal-preserving curly-text form.
 #[test]
-fn strings_reshuffle_to_bare_paren_and_pipe_paren_forms() {
+fn strings_reshuffle_to_bare_and_curly_forms() {
     assert_eq!("schema".to_owned().to_dotos(), "schema");
-    assert_eq!("alpha beta".to_owned().to_dotos(), "(alpha beta)");
+    assert_eq!("alpha beta".to_owned().to_dotos(), "“alpha beta”");
     assert_eq!("a.b".to_owned().to_dotos(), "a.b");
-    assert_eq!("has (paren)".to_owned().to_dotos(), "(|has (paren)|)");
-    assert_eq!("alpha;;beta".to_owned().to_dotos(), "(|alpha;;beta|)");
+    assert_eq!("has (paren)".to_owned().to_dotos(), "“has (paren)”");
+    assert_eq!("alpha;;beta".to_owned().to_dotos(), "“alpha;;beta”");
 
     for original in ["schema", "alpha beta", "a.b", "has (paren)", "alpha;;beta"] {
         let encoded = original.to_owned().to_dotos();
@@ -142,16 +141,20 @@ fn strings_reshuffle_to_bare_paren_and_pipe_paren_forms() {
     }
 }
 
-/// A canonical string bracketed redundantly is rejected: `(schema)` must be
-/// written bare.
+/// Parentheses and pipes are not string syntax: `(schema)` must be written
+/// bare, while a multi-word value uses curly quotes.
 #[test]
-fn redundant_string_parentheses_are_rejected() {
+fn parenthesized_and_pipe_strings_are_rejected() {
     let error = DotosSource::new("(schema)")
         .parse::<String>()
         .expect_err("redundant parentheses reject");
     assert!(
-        error.to_string().contains("use schema"),
+        error.to_string().contains("curly quote"),
         "error was {error}"
+    );
+    assert!(
+        DotosSource::new("(|schema|)").parse::<String>().is_err(),
+        "pipe text is retired"
     );
 }
 
@@ -165,11 +168,11 @@ fn vectors_keep_brackets_and_options_are_dotted_variants() {
     assert_eq!(vector, vec!["alpha", "beta", "gamma"]);
     assert_eq!(vector.to_dotos(), "[alpha beta gamma]");
 
-    let some = DotosSource::new("Some.(cache entry)")
+    let some = DotosSource::new("Some.“cache entry”")
         .parse::<Option<String>>()
         .expect("some decodes");
     assert_eq!(some, Some("cache entry".to_owned()));
-    assert_eq!(some.to_dotos(), "Some.(cache entry)");
+    assert_eq!(some.to_dotos(), "Some.“cache entry”");
 
     let some_bare = DotosSource::new("Some.42")
         .parse::<Option<u64>>()
@@ -196,22 +199,73 @@ fn maps_are_map_headed_applications_over_dotted_entries() {
     assert_eq!(map.to_dotos(), "Map.(alpha.1 beta.2)");
 }
 
-/// The multiline pipe-string moves from `[| |]` to `(| |)`, and the close
-/// marker `|)` is escaped inside the body.
+/// Curly strings preserve multiline text and nest without turning inner quotes
+/// into syntax errors.
 #[test]
-fn pipe_paren_multiline_string_round_trips_with_escapes() {
-    let original = "line one\nline two with |) marker".to_owned();
+fn curly_multiline_string_round_trips_with_nesting() {
+    let original = "line one\nline two with “nested” marker".to_owned();
     let encoded = original.to_dotos();
     assert!(
-        encoded.starts_with("(|") && encoded.ends_with("|)"),
+        encoded.starts_with('“') && encoded.ends_with('”'),
         "{encoded}"
     );
     assert_eq!(
         DotosSource::new(&encoded)
             .parse::<String>()
-            .expect("pipe-paren string decodes"),
+            .expect("curly string decodes"),
         original
     );
+}
+
+#[test]
+fn bare_angles_form_nested_quality_applications() {
+    let document = Document::parse("Result<Vector<Ordered> Error>").expect("quality syntax");
+    let root = document.root_object_at(0).expect("single root");
+    assert_eq!(root.application_form(), Some(dotos::ApplicationForm::Angle));
+    let (head, payload) = root.as_application().expect("outer angle application");
+    assert_eq!(head.demote_to_string(), Some("Result"));
+    let arguments = payload
+        .as_delimited(dotos::Delimiter::Angle)
+        .expect("angle payload");
+    assert_eq!(arguments.len(), 2);
+    assert_eq!(
+        arguments[0].application_form(),
+        Some(dotos::ApplicationForm::Angle)
+    );
+    assert_eq!(arguments[1].demote_to_string(), Some("Error"));
+    assert!(
+        Document::parse("Vector.<Ordered>").is_err(),
+        "angle is never dot-prefixed"
+    );
+}
+
+#[test]
+fn transformer_applications_keep_dot_and_parenthesis_as_distinct_shapes() {
+    let standalone = Document::parse("Name.Transformer.(Input Output)")
+        .expect("standalone transformer application");
+    let (name, transformer) = standalone
+        .root_object_at(0)
+        .expect("standalone root")
+        .as_application()
+        .expect("name application");
+    assert_eq!(name.demote_to_string(), Some("Name"));
+    let (transformer_name, arguments) = transformer
+        .as_application()
+        .expect("transformer application");
+    assert_eq!(transformer_name.demote_to_string(), Some("Transformer"));
+    assert!(arguments.is_parenthesis());
+    assert_eq!(arguments.holds_root_objects(), 2);
+
+    let sectioned =
+        Document::parse("Name.(Input Output)").expect("sectioned transformer application");
+    let (section_name, section_arguments) = sectioned
+        .root_object_at(0)
+        .expect("sectioned root")
+        .as_application()
+        .expect("section application");
+    assert_eq!(section_name.demote_to_string(), Some("Name"));
+    assert!(section_arguments.is_parenthesis());
+    assert_eq!(section_arguments.holds_root_objects(), 2);
 }
 
 /// The psyche-authored base sample parses under the new grammar with its
@@ -289,9 +343,9 @@ fn derived_struct_body_is_a_brace_record() {
         label: "commit sequence".to_owned(),
         count: 4,
     };
-    assert_eq!(marker.to_dotos(), "{(commit sequence) 4}");
+    assert_eq!(marker.to_dotos(), "{“commit sequence” 4}");
     let decoded = Marker::from_dotos_block(
-        Document::parse("{(commit sequence) 4}")
+        Document::parse("{“commit sequence” 4}")
             .expect("parses")
             .root_object_at(0)
             .expect("root"),

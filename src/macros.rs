@@ -43,8 +43,7 @@ pub enum MacroDelimiter {
     Parenthesis,
     SquareBracket,
     Brace,
-    PipeParenthesis,
-    PipeBrace,
+    Angle,
 }
 
 impl MacroDelimiter {
@@ -53,15 +52,14 @@ impl MacroDelimiter {
             Delimiter::Parenthesis => Self::Parenthesis,
             Delimiter::SquareBracket => Self::SquareBracket,
             Delimiter::Brace => Self::Brace,
-            Delimiter::PipeParenthesis => Self::PipeParenthesis,
-            Delimiter::PipeBrace => Self::PipeBrace,
+            Delimiter::Angle => Self::Angle,
         }
     }
 
     pub fn from_block(block: &Block) -> Option<Self> {
         match block {
             Block::Delimited { delimiter, .. } => Some(Self::from_delimiter(*delimiter)),
-            Block::Application { .. } | Block::PipeText(_) | Block::Atom(_) => None,
+            Block::Application { .. } | Block::CurlyText(_) | Block::Atom(_) => None,
         }
     }
 
@@ -70,8 +68,7 @@ impl MacroDelimiter {
             Self::Parenthesis => "parenthesis",
             Self::SquareBracket => "square bracket",
             Self::Brace => "brace",
-            Self::PipeParenthesis => "pipe parenthesis",
-            Self::PipeBrace => "pipe brace",
+            Self::Angle => "angle bracket",
         }
     }
 }

@@ -21,14 +21,8 @@ pub struct Document {
 
 impl Document {
     pub fn parse(source: impl Into<String>) -> Result<Self, DotosError> {
-        Self::parse_with_mode(source, ParseMode::Default)
-    }
-
-    /// Parse with an explicitly selected grammar extension. The default grammar
-    /// keeps `(| … |)` as pipe text; structural-pipe consumers must opt in.
-    pub fn parse_with_mode(source: impl Into<String>, mode: ParseMode) -> Result<Self, DotosError> {
         let source = source.into();
-        let mut parser = Parser::new(&source, mode);
+        let mut parser = Parser::new(&source);
         let root_objects = parser.parse_document()?;
         Ok(Self {
             source,
@@ -59,15 +53,6 @@ impl Document {
     }
 }
 
-/// Optional grammar extensions for consumers that carry a legacy structural
-/// shape as data. This never changes [`Document::parse`]'s default grammar.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ParseMode {
-    #[default]
-    Default,
-    StructuralPipe,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Block {
     Delimited {
@@ -87,11 +72,20 @@ pub enum Block {
     /// structural operator here, not atom text.
     Application {
         span: SourceSpan,
+        form: ApplicationForm,
         head: Box<Block>,
         payload: Box<Block>,
     },
-    PipeText(PipeText),
+    CurlyText(CurlyText),
     Atom(Atom),
+}
+
+/// The two structural application forms. Dots introduce ordinary typed
+/// applications; bare angles carry a quality/application argument list.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApplicationForm {
+    Dot,
+    Angle,
 }
 
 impl Block {
@@ -99,7 +93,7 @@ impl Block {
         match self {
             Self::Delimited { span, .. } => *span,
             Self::Application { span, .. } => *span,
-            Self::PipeText(pipe_text) => pipe_text.span,
+            Self::CurlyText(curly_text) => curly_text.span,
             Self::Atom(atom) => atom.span,
         }
     }
@@ -139,28 +133,18 @@ impl Block {
         )
     }
 
-    pub fn is_pipe_parenthesis(&self) -> bool {
+    pub fn is_angle(&self) -> bool {
         matches!(
             self,
             Self::Delimited {
-                delimiter: Delimiter::PipeParenthesis,
+                delimiter: Delimiter::Angle,
                 ..
             }
         )
     }
 
-    pub fn is_pipe_brace(&self) -> bool {
-        matches!(
-            self,
-            Self::Delimited {
-                delimiter: Delimiter::PipeBrace,
-                ..
-            }
-        )
-    }
-
-    pub fn is_pipe_text(&self) -> bool {
-        matches!(self, Self::PipeText(_))
+    pub fn is_curly_text(&self) -> bool {
+        matches!(self, Self::CurlyText(_))
     }
 
     pub fn is_atom(&self) -> bool {
@@ -182,7 +166,7 @@ impl Block {
     pub fn as_application(&self) -> Option<(&Block, &Block)> {
         match self {
             Self::Application { head, payload, .. } => Some((head, payload)),
-            Self::Delimited { .. } | Self::PipeText(_) | Self::Atom(_) => None,
+            Self::Delimited { .. } | Self::CurlyText(_) | Self::Atom(_) => None,
         }
     }
 
@@ -196,6 +180,14 @@ impl Block {
         self.as_application().map(|(_, payload)| payload)
     }
 
+    /// Structural spelling that joined an application head to its payload.
+    pub fn application_form(&self) -> Option<ApplicationForm> {
+        match self {
+            Self::Application { form, .. } => Some(*form),
+            Self::Delimited { .. } | Self::CurlyText(_) | Self::Atom(_) => None,
+        }
+    }
+
     pub fn as_delimited(&self, delimiter: Delimiter) -> Option<&[Block]> {
         match self {
             Self::Delimited {
@@ -205,7 +197,7 @@ impl Block {
             } if *found == delimiter => Some(root_objects),
             Self::Delimited { .. }
             | Self::Application { .. }
-            | Self::PipeText(_)
+            | Self::CurlyText(_)
             | Self::Atom(_) => None,
         }
     }
@@ -213,7 +205,7 @@ impl Block {
     pub fn holds_root_objects(&self) -> usize {
         match self {
             Self::Delimited { root_objects, .. } => root_objects.len(),
-            Self::Application { .. } | Self::PipeText(_) | Self::Atom(_) => 0,
+            Self::Application { .. } | Self::CurlyText(_) | Self::Atom(_) => 0,
         }
     }
 
@@ -228,21 +220,21 @@ impl Block {
     pub fn root_object_at(&self, index: usize) -> Option<&Block> {
         match self {
             Self::Delimited { root_objects, .. } => root_objects.get(index),
-            Self::Application { .. } | Self::PipeText(_) | Self::Atom(_) => None,
+            Self::Application { .. } | Self::CurlyText(_) | Self::Atom(_) => None,
         }
     }
 
     pub fn root_objects(&self) -> &[Block] {
         match self {
             Self::Delimited { root_objects, .. } => root_objects,
-            Self::Application { .. } | Self::PipeText(_) | Self::Atom(_) => &[],
+            Self::Application { .. } | Self::CurlyText(_) | Self::Atom(_) => &[],
         }
     }
 
     pub fn atom(&self) -> Option<&Atom> {
         match self {
             Self::Atom(atom) => Some(atom),
-            Self::Delimited { .. } | Self::Application { .. } | Self::PipeText(_) => None,
+            Self::Delimited { .. } | Self::Application { .. } | Self::CurlyText(_) => None,
         }
     }
 
@@ -268,7 +260,7 @@ impl Block {
     pub fn demote_to_string(&self) -> Option<&str> {
         match self {
             Self::Atom(atom) => Some(atom.text.as_str()),
-            Self::PipeText(pipe_text) => Some(pipe_text.text.as_str()),
+            Self::CurlyText(curly_text) => Some(curly_text.text.as_str()),
             Self::Delimited { .. } | Self::Application { .. } => None,
         }
     }
@@ -283,12 +275,22 @@ impl Block {
     pub fn dotted_text(&self) -> Option<String> {
         match self {
             Self::Atom(atom) => Some(atom.text.clone()),
-            Self::Application { head, payload, .. } => {
+            Self::Application {
+                form: ApplicationForm::Dot,
+                head,
+                payload,
+                ..
+            } => {
                 let head = head.dotted_text()?;
                 let payload = payload.dotted_text()?;
                 Some(format!("{head}.{payload}"))
             }
-            Self::Delimited { .. } | Self::PipeText(_) => None,
+            Self::Application {
+                form: ApplicationForm::Angle,
+                ..
+            }
+            | Self::Delimited { .. }
+            | Self::CurlyText(_) => None,
         }
     }
 
@@ -307,15 +309,11 @@ impl Block {
                 ..
             } => StructureShape::Brace,
             Self::Delimited {
-                delimiter: Delimiter::PipeParenthesis,
+                delimiter: Delimiter::Angle,
                 ..
-            } => StructureShape::PipeParenthesis,
-            Self::Delimited {
-                delimiter: Delimiter::PipeBrace,
-                ..
-            } => StructureShape::PipeBrace,
+            } => StructureShape::Angle,
             Self::Application { .. } => StructureShape::Application,
-            Self::PipeText(_) => StructureShape::PipeText,
+            Self::CurlyText(_) => StructureShape::CurlyText,
             Self::Atom(_) => StructureShape::Atom,
         }
     }
@@ -330,8 +328,7 @@ pub enum Delimiter {
     Parenthesis,
     SquareBracket,
     Brace,
-    PipeParenthesis,
-    PipeBrace,
+    Angle,
 }
 
 impl Delimiter {
@@ -340,8 +337,7 @@ impl Delimiter {
             Self::Parenthesis => "(",
             Self::SquareBracket => "[",
             Self::Brace => "{",
-            Self::PipeParenthesis => "(|",
-            Self::PipeBrace => "{|",
+            Self::Angle => "<",
         }
     }
 
@@ -350,8 +346,7 @@ impl Delimiter {
             Self::Parenthesis => ")",
             Self::SquareBracket => "]",
             Self::Brace => "}",
-            Self::PipeParenthesis => "|)",
-            Self::PipeBrace => "|}",
+            Self::Angle => ">",
         }
     }
 
@@ -360,8 +355,7 @@ impl Delimiter {
             Self::Parenthesis => "parenthesis",
             Self::SquareBracket => "square bracket",
             Self::Brace => "brace",
-            Self::PipeParenthesis => "pipe parenthesis",
-            Self::PipeBrace => "pipe brace",
+            Self::Angle => "angle bracket",
         }
     }
 
@@ -380,8 +374,7 @@ impl Delimiter {
             Self::Parenthesis => ')',
             Self::SquareBracket => ']',
             Self::Brace => '}',
-            Self::PipeParenthesis => ')',
-            Self::PipeBrace => '}',
+            Self::Angle => '>',
         }
     }
 
@@ -390,6 +383,7 @@ impl Delimiter {
             '(' => Some(Self::Parenthesis),
             '[' => Some(Self::SquareBracket),
             '{' => Some(Self::Brace),
+            '<' => Some(Self::Angle),
             _ => None,
         }
     }
@@ -399,6 +393,7 @@ impl Delimiter {
             ')' => Some(Self::Parenthesis),
             ']' => Some(Self::SquareBracket),
             '}' => Some(Self::Brace),
+            '>' => Some(Self::Angle),
             _ => None,
         }
     }
@@ -490,10 +485,9 @@ pub enum StructureShape {
     Parenthesis,
     SquareBracket,
     Brace,
-    PipeText,
+    Angle,
+    CurlyText,
     Application,
-    PipeParenthesis,
-    PipeBrace,
     Unknown,
 }
 
@@ -505,10 +499,9 @@ impl StructureShape {
             Self::Parenthesis => "parenthesis",
             Self::SquareBracket => "square bracket",
             Self::Brace => "brace",
-            Self::PipeText => "pipe text",
+            Self::Angle => "angle bracket",
+            Self::CurlyText => "curly quoted text",
             Self::Application => "application",
-            Self::PipeParenthesis => "pipe parenthesis",
-            Self::PipeBrace => "pipe brace",
             Self::Unknown => "unknown",
         }
     }
@@ -520,10 +513,9 @@ impl StructureShape {
             Self::Parenthesis => 2,
             Self::SquareBracket => 3,
             Self::Brace => 4,
-            Self::PipeText => 5,
-            Self::Application => 6,
-            Self::PipeParenthesis => 7,
-            Self::PipeBrace => 8,
+            Self::Angle => 5,
+            Self::CurlyText => 6,
+            Self::Application => 7,
             Self::Unknown => 15,
         }
     }
@@ -535,10 +527,9 @@ impl StructureShape {
             2 => Self::Parenthesis,
             3 => Self::SquareBracket,
             4 => Self::Brace,
-            5 => Self::PipeText,
-            6 => Self::Application,
-            7 => Self::PipeParenthesis,
-            8 => Self::PipeBrace,
+            5 => Self::Angle,
+            6 => Self::CurlyText,
+            7 => Self::Application,
             _ => Self::Unknown,
         }
     }
@@ -597,7 +588,7 @@ impl StructureHeaderBuilder {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PipeText {
+pub struct CurlyText {
     pub text: String,
     pub span: SourceSpan,
 }
@@ -621,7 +612,10 @@ impl AtomClassification {
         if !text.is_empty()
             && text.chars().all(|character| {
                 !character.is_whitespace()
-                    && !matches!(character, '"' | '.' | '(' | ')' | '[' | ']' | '{' | '}')
+                    && !matches!(
+                        character,
+                        '"' | '.' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | '“' | '”' | '|'
+                    )
             })
         {
             Self::SymbolCandidate
@@ -708,7 +702,11 @@ pub enum DotosError {
         delimiter: Delimiter,
         position: SourcePosition,
     },
-    UnclosedPipeText {
+    UnclosedCurlyText {
+        position: SourcePosition,
+    },
+    InvalidCurlyTextEscape {
+        found: Option<char>,
         position: SourcePosition,
     },
     /// A period appeared where an object was expected — the head of a
@@ -722,6 +720,9 @@ pub enum DotosError {
     /// followed the period. The payload must be glued to the period with no
     /// intervening separator.
     DanglingApplication {
+        position: SourcePosition,
+    },
+    UnexpectedPipe {
         position: SourcePosition,
     },
 }
@@ -744,11 +745,23 @@ impl fmt::Display for DotosError {
                 position.line,
                 position.column
             ),
-            Self::UnclosedPipeText { position } => write!(
+            Self::UnclosedCurlyText { position } => write!(
                 formatter,
-                "unclosed `(|` pipe text opened at {}:{}",
+                "unclosed `“` curly text opened at {}:{}",
                 position.line, position.column
             ),
+            Self::InvalidCurlyTextEscape { found, position } => match found {
+                Some(found) => write!(
+                    formatter,
+                    "invalid curly-text escape `\\{found}` at {}:{}; use `\\“`, `\\”`, or `\\\\`",
+                    position.line, position.column
+                ),
+                None => write!(
+                    formatter,
+                    "unfinished curly-text escape at {}:{}",
+                    position.line, position.column
+                ),
+            },
             Self::UnexpectedDot { position } => write!(
                 formatter,
                 "unexpected `.` with no head object at {}:{}",
@@ -759,6 +772,11 @@ impl fmt::Display for DotosError {
                 "dot-application `.` at {}:{} is not followed by a glued payload object",
                 position.line, position.column
             ),
+            Self::UnexpectedPipe { position } => write!(
+                formatter,
+                "unexpected `|` at {}:{}; pipe has no grammar duty",
+                position.line, position.column
+            ),
         }
     }
 }
@@ -767,15 +785,13 @@ impl std::error::Error for DotosError {}
 
 struct Parser<'source> {
     source: &'source str,
-    mode: ParseMode,
     cursor: Cursor,
 }
 
 impl<'source> Parser<'source> {
-    fn new(source: &'source str, mode: ParseMode) -> Self {
+    fn new(source: &'source str) -> Self {
         Self {
             source,
-            mode,
             cursor: Cursor::default(),
         }
     }
@@ -809,9 +825,14 @@ impl<'source> Parser<'source> {
     /// dangling application error.
     fn parse_object(&mut self) -> Result<Block, DotosError> {
         let head = self.parse_primary()?;
-        if self.peek() != Some('.') {
-            return Ok(head);
+        match self.peek() {
+            Some('.') => self.parse_dot_application(head),
+            Some('<') => self.parse_angle_application(head),
+            _ => Ok(head),
         }
+    }
+
+    fn parse_dot_application(&mut self, head: Block) -> Result<Block, DotosError> {
         let dot = self.cursor.position();
         self.bump();
         if !self.at_primary_start() {
@@ -824,43 +845,48 @@ impl<'source> Parser<'source> {
         };
         Ok(Block::Application {
             span,
+            form: ApplicationForm::Dot,
             head: Box::new(head),
             payload: Box::new(payload),
         })
     }
 
-    /// Parse a single primary object: a delimited block, a pipe-text block, or
+    fn parse_angle_application(&mut self, head: Block) -> Result<Block, DotosError> {
+        let payload = self.parse_delimited(Delimiter::Angle)?;
+        let span = SourceSpan {
+            start: head.source_span().start,
+            end: payload.source_span().end,
+        };
+        Ok(Block::Application {
+            span,
+            form: ApplicationForm::Angle,
+            head: Box::new(head),
+            payload: Box::new(payload),
+        })
+    }
+
+    /// Parse a single primary object: a delimited block, a curly-text block, or
     /// a bare atom. A primary never consumes a trailing dot-application; that
     /// binding is [`parse_object`]'s job. A leading period has no head object
     /// and is rejected.
     fn parse_primary(&mut self) -> Result<Block, DotosError> {
         match self.peek() {
-            Some('(') if self.peek_next() == Some('|') => match self.mode {
-                ParseMode::Default => self.parse_pipe_text(')'),
-                ParseMode::StructuralPipe => self.parse_pipe_delimited(Delimiter::PipeParenthesis),
-            },
             Some('(') => self.parse_delimited(Delimiter::Parenthesis),
-            // The bracket-pipe form is an unambiguous legacy spelling for raw
-            // text. Retain it in both modes so structural `(| … |)` adoption
-            // does not force raw schema fixtures to lose their text literals.
-            Some('[') if self.peek_next() == Some('|') => self.parse_pipe_text(']'),
             Some('[') => self.parse_delimited(Delimiter::SquareBracket),
-            Some('{')
-                if self.peek_next() == Some('|') && self.mode == ParseMode::StructuralPipe =>
-            {
-                self.parse_pipe_delimited(Delimiter::PipeBrace)
-            }
             Some('{') => self.parse_delimited(Delimiter::Brace),
+            Some('“') => self.parse_curly_text(),
+            Some('<') => Err(DotosError::UnexpectedClose {
+                found: '<',
+                position: self.cursor.position(),
+            }),
+            Some('”') | Some('>') => Err(DotosError::UnexpectedClose {
+                found: self.peek().expect("matched Some above"),
+                position: self.cursor.position(),
+            }),
             Some('.') => Err(DotosError::UnexpectedDot {
                 position: self.cursor.position(),
             }),
-            // A misplaced pipe-close (`|)`) at an object position would make
-            // `parse_atom` return a zero-width atom without advancing — the
-            // enclosing loop would then spin forever, growing the block vector
-            // until it exhausts memory. Reject it so the parser always makes
-            // progress on malformed input.
-            Some('|') if self.at_pipe_delimiter_close() => Err(DotosError::UnexpectedClose {
-                found: self.peek_next().unwrap_or('|'),
+            Some('|') => Err(DotosError::UnexpectedPipe {
                 position: self.cursor.position(),
             }),
             Some(_) => Ok(self.parse_atom()),
@@ -874,10 +900,10 @@ impl<'source> Parser<'source> {
         match self.peek() {
             None => false,
             Some('.') => false,
+            Some('<') | Some('>') | Some('”') | Some('|') => false,
             Some(character) if character.is_whitespace() => false,
             Some(character) if Delimiter::from_closing(character).is_some() => false,
             Some(_) if self.at_comment_start() => false,
-            Some(_) if self.at_pipe_delimiter_close() => false,
             Some(_) => true,
         }
     }
@@ -913,69 +939,45 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn parse_pipe_delimited(&mut self, delimiter: Delimiter) -> Result<Block, DotosError> {
+    fn parse_curly_text(&mut self) -> Result<Block, DotosError> {
         let start = self.cursor.position();
-        self.bump();
-        self.bump();
-        let mut root_objects = Vec::new();
-        loop {
-            self.skip_spacing();
-            let Some(character) = self.peek() else {
-                return Err(DotosError::UnclosedDelimiter {
-                    delimiter,
-                    position: start,
-                });
-            };
-            if character == '|' && self.peek_next() == Some(delimiter.closing()) {
-                self.bump();
-                self.bump();
-                return Ok(Block::Delimited {
-                    delimiter,
-                    span: SourceSpan {
-                        start,
-                        end: self.cursor.position(),
-                    },
-                    root_objects,
-                });
-            }
-            if Delimiter::from_closing(character).is_some() {
-                return Err(DotosError::UnexpectedClose {
-                    found: character,
-                    position: self.cursor.position(),
-                });
-            }
-            root_objects.push(self.parse_object()?);
-        }
-    }
-
-    fn parse_pipe_text(&mut self, closing: char) -> Result<Block, DotosError> {
-        let start = self.cursor.position();
-        self.bump();
         self.bump();
         let mut text = String::new();
+        let mut depth = 1_usize;
         while let Some(character) = self.peek() {
             if character == '\\' {
+                let position = self.cursor.position();
                 self.bump();
-                if let Some(escaped) = self.peek() {
-                    text.push(escaped);
-                    self.bump();
-                } else {
-                    text.push('\\');
+                match self.peek() {
+                    Some(escaped @ ('“' | '”' | '\\')) => {
+                        text.push(escaped);
+                        self.bump();
+                    }
+                    found => return Err(DotosError::InvalidCurlyTextEscape { found, position }),
                 }
-            } else if character == '|' && self.peek_next() == Some(closing) {
+            } else if character == '“' {
+                depth += 1;
+                text.push(character);
                 self.bump();
+            } else if character == '”' {
                 self.bump();
-                let end = self.cursor.position();
-                return Ok(Block::PipeText(PipeText {
-                    text,
-                    span: SourceSpan { start, end },
-                }));
+                depth -= 1;
+                if depth == 0 {
+                    return Ok(Block::CurlyText(CurlyText {
+                        text: remove_common_indentation(text),
+                        span: SourceSpan {
+                            start,
+                            end: self.cursor.position(),
+                        },
+                    }));
+                }
+                text.push(character);
             } else {
                 text.push(character);
                 self.bump();
             }
         }
-        Err(DotosError::UnclosedPipeText { position: start })
+        Err(DotosError::UnclosedCurlyText { position: start })
     }
 
     fn parse_atom(&mut self) -> Block {
@@ -985,8 +987,8 @@ impl<'source> Parser<'source> {
                 || character == '.'
                 || Delimiter::from_opening(character).is_some()
                 || Delimiter::from_closing(character).is_some()
+                || matches!(character, '“' | '”' | '|')
                 || self.at_comment_start()
-                || self.at_pipe_delimiter_close()
             {
                 break;
             }
@@ -995,10 +997,6 @@ impl<'source> Parser<'source> {
         let end = self.cursor.position();
         let text = self.source[start.byte_offset..end.byte_offset].to_owned();
         Block::Atom(Atom::new(text, SourceSpan { start, end }))
-    }
-
-    fn at_pipe_delimiter_close(&self) -> bool {
-        self.peek() == Some('|') && matches!(self.peek_next(), Some(')') | Some('}'))
     }
 
     fn at_comment_start(&self) -> bool {
@@ -1045,6 +1043,46 @@ impl<'source> Parser<'source> {
         }
         Some(character)
     }
+}
+
+/// Remove presentation-only indentation from a multiline curly string. An
+/// opener/closer placed on their own indented lines do not become text; the
+/// smallest indentation shared by the remaining nonblank lines is removed.
+fn remove_common_indentation(text: String) -> String {
+    if !text.contains('\n') {
+        return text;
+    }
+
+    let mut lines: Vec<&str> = text.split('\n').collect();
+    if lines.first().is_some_and(|line| line.trim().is_empty()) {
+        lines.remove(0);
+    }
+    if lines.last().is_some_and(|line| line.trim().is_empty()) {
+        lines.pop();
+    }
+    let indentation = lines
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.chars()
+                .take_while(|character| matches!(character, ' ' | '\t'))
+                .count()
+        })
+        .min()
+        .unwrap_or(0);
+    lines
+        .into_iter()
+        .map(|line| {
+            let cut = line
+                .char_indices()
+                .take(indentation)
+                .map(|(index, character)| index + character.len_utf8())
+                .last()
+                .unwrap_or(0);
+            &line[cut..]
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[derive(Clone, Debug)]
@@ -1095,7 +1133,7 @@ impl AtomCharacter {
         !self.character.is_whitespace()
             && !matches!(
                 self.character,
-                '"' | '.' | '(' | ')' | '[' | ']' | '{' | '}'
+                '"' | '.' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | '“' | '”' | '|'
             )
     }
 }

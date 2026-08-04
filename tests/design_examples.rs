@@ -78,7 +78,7 @@ fn design_example_reader_exposes_candidates_not_schema_semantics() {
     assert!(!block.is_parenthesis());
     assert!(!block.is_square_bracket());
     assert!(!block.is_brace());
-    assert!(!block.is_pipe_text());
+    assert!(!block.is_curly_text());
 
     // Candidate query — present, names the classification candidate.
     assert!(block.qualifies_as_pascal_case_symbol());

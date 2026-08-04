@@ -70,17 +70,17 @@ fn indentation_step_is_configurable() {
 }
 
 #[test]
-fn pipe_text_bytes_survive_a_break_verbatim() {
-    // A pipe-text leaf carries a raw newline. The layout must never indent
+fn curly_text_bytes_survive_a_break_verbatim() {
+    // A curly-text leaf carries a raw newline. The layout must never indent
     // inside it, and the exact bytes must round-trip.
-    let source = "(Note (|first line
-second line|) tail)";
+    let source = "(Note “first line
+second line” tail)";
     let pretty = PrettyLayout::new(12, 2)
         .render_dotos(source)
         .expect("valid dotos");
     assert!(pretty.contains(
-        "(|first line
-second line|)"
+        "“first line
+second line”"
     ));
     assert_reparses_equal(source, &pretty);
 }
@@ -136,8 +136,8 @@ fn every_sample_round_trips_across_widths() {
         "(Alpha (Beta gamma) delta)",
         "(One (Two (Three (Four deep))))",
         "{alpha.[one] beta.[two] gamma.[three]}",
-        "(Note [|a raw
-block|] tail)",
+        "(Note “a raw
+block” tail)",
         "(Mixed [a b c] {key.value} (Inner x y) plain)",
         "(First a) (Second (Nested b c)) (Third d)",
     ];

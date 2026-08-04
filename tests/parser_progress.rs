@@ -1,5 +1,5 @@
-//! The parser must always terminate — a misplaced pipe-close (`|]`, `|)`, `|}`)
-//! at an object position must not spin `parse_atom` on a zero-width atom (which
+//! The parser must always terminate — a retired pipe glyph or malformed curly
+//! string at an object position must not spin `parse_atom` on a zero-width atom (which
 //! grows the block vector unboundedly → OOM). Each parse runs in a watchdog
 //! thread so a regression hangs the worker, not the test runner; run the test
 //! binary under a memory cap so the hung worker is contained, not the machine.
@@ -21,7 +21,7 @@ fn parse_terminates(input: &str) -> bool {
 }
 
 #[test]
-fn parser_terminates_on_stray_pipe_close() {
+fn parser_terminates_on_retired_pipe_and_malformed_curly_text() {
     for input in [
         "(a |])",
         "[a |] b]",
@@ -30,6 +30,8 @@ fn parser_terminates_on_stray_pipe_close() {
         "{ |} }",
         "( |) )",
         "(record [|]x)",
+        "“unterminated",
+        "“invalid\\q”",
     ] {
         assert!(
             parse_terminates(input),

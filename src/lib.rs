@@ -35,7 +35,7 @@ pub use macros::{
     StructuralVariantConflict, StructuralVariantError, StructuralVariantSet,
 };
 pub use parser::{
-    Atom, AtomClassification, Block, Delimiter, Document, DotosError, ParseMode, PipeText,
+    ApplicationForm, Atom, AtomClassification, Block, CurlyText, Delimiter, Document, DotosError,
     SourcePosition, SourceSpan, StructureHeader, StructureShape, StructureSlot,
 };
 pub use pretty::{DotosOutputForm, PrettyLayout};

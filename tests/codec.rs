@@ -9,7 +9,7 @@ use dotos::{
 #[test]
 fn codec_decodes_and_encodes_scalars() {
     assert_eq!(
-        DotosSource::new("(schema owns strings)")
+        DotosSource::new("“schema owns strings”")
             .parse::<String>()
             .expect("string decodes"),
         "schema owns strings"
@@ -62,28 +62,26 @@ fn codec_decodes_and_encodes_scalars() {
 
     assert_eq!(
         "schema owns strings".to_owned().to_dotos(),
-        "(schema owns strings)"
+        "“schema owns strings”"
     );
     assert_eq!(
-        "schema@next;required*;a&b^2%>x<y:path/to"
-            .to_owned()
-            .to_dotos(),
-        "schema@next;required*;a&b^2%>x<y:path/to"
+        "schema@next;required*;a&b^2%:path/to".to_owned().to_dotos(),
+        "schema@next;required*;a&b^2%:path/to"
     );
     assert_eq!(
-        DotosSource::new("schema@next;required*;a&b^2%>x<y:path/to")
+        DotosSource::new("schema@next;required*;a&b^2%:path/to")
             .parse::<String>()
             .expect("broad bare string decodes"),
-        "schema@next;required*;a&b^2%>x<y:path/to"
+        "schema@next;required*;a&b^2%:path/to"
     );
     assert_eq!("100%".to_owned().to_dotos(), "100%");
-    assert_eq!("alpha; beta".to_owned().to_dotos(), "(alpha; beta)");
-    assert_eq!("alpha;;beta".to_owned().to_dotos(), "(|alpha;;beta|)");
+    assert_eq!("alpha; beta".to_owned().to_dotos(), "“alpha; beta”");
+    assert_eq!("alpha;;beta".to_owned().to_dotos(), "“alpha;;beta”");
     let bracket_safe = "text containing [brackets] and a closing pipe marker |)".to_owned();
     let encoded = bracket_safe.to_dotos();
     assert_eq!(
         encoded,
-        "(|text containing [brackets] and a closing pipe marker \\|)|)"
+        "“text containing [brackets] and a closing pipe marker |)”"
     );
     assert_eq!(
         DotosSource::new(&encoded)
@@ -93,10 +91,7 @@ fn codec_decodes_and_encodes_scalars() {
     );
     let slash_safe = String::from("text containing [brackets] and a backslash \\");
     let encoded = slash_safe.to_dotos();
-    assert_eq!(
-        encoded,
-        "(|text containing [brackets] and a backslash \\\\|)"
-    );
+    assert_eq!(encoded, "“text containing [brackets] and a backslash \\\\”");
     assert_eq!(
         DotosSource::new(&encoded)
             .parse::<String>()
@@ -117,8 +112,8 @@ fn codec_decodes_and_encodes_scalars() {
 /// as a float is reclaimed by an expected `Float`: a dotted raw application
 /// rejoins into the bare string content, case-blind and through any depth of
 /// dots. Bare is the canonical form for such content, so encode emits it bare
-/// and a redundant pipe wrapper is rejected. Spaces still take `( … )` and
-/// genuinely structural content still takes `(| … |)`.
+/// and a redundant curly wrapper is rejected. Every non-bare string uses
+/// curly quotes.
 #[test]
 fn codec_rejoins_dotted_strings_under_expected_string_type() {
     // Decode: a dotted bare application rejoins into flat string content.
@@ -139,7 +134,7 @@ fn codec_rejoins_dotted_strings_under_expected_string_type() {
         );
     }
 
-    // Encode: period-joined bare-atom content emits bare, with no pipe escape.
+    // Encode: period-joined bare-atom content emits bare, with no quote escape.
     assert_eq!("file.txt".to_owned().to_dotos(), "file.txt");
     assert_eq!("Foo.bar".to_owned().to_dotos(), "Foo.bar");
     assert_eq!(
@@ -147,8 +142,7 @@ fn codec_rejoins_dotted_strings_under_expected_string_type() {
         "nix.prometheus.goldragon.criome"
     );
 
-    // Round trip (decode ∘ encode) for every canonical class: bare-dotted,
-    // space-separated parenthesis, and structural pipe text.
+    // Round trip (decode ∘ encode) for bare-dotted and curly text values.
     for original in [
         "file.txt",
         "Foo.bar",
@@ -168,16 +162,16 @@ fn codec_rejoins_dotted_strings_under_expected_string_type() {
         );
     }
 
-    // A string with spaces still takes the parenthesis form.
+    // A string with spaces takes the universal curly-text form.
     assert_eq!(
         "words with spaces".to_owned().to_dotos(),
-        "(words with spaces)"
+        "“words with spaces”"
     );
-    // A multi-line string still takes the literal-preserving pipe form.
+    // A multi-line string takes the literal-preserving curly form.
     let multiline = "line one\nline two".to_owned().to_dotos();
     assert!(
-        multiline.starts_with("(|") && multiline.ends_with("|)"),
-        "multiline string takes pipe form, was {multiline}"
+        multiline.starts_with('“') && multiline.ends_with('”'),
+        "multiline string takes curly form, was {multiline}"
     );
 
     // Round trip (encode ∘ decode) on canonical text: canonical source decodes
@@ -186,8 +180,8 @@ fn codec_rejoins_dotted_strings_under_expected_string_type() {
         "file.txt",
         "Foo.bar",
         "nix.prometheus.goldragon.criome",
-        "(words with spaces)",
-        "(version 1.2)",
+        "“words with spaces”",
+        "“version 1.2”",
     ] {
         let value = DotosSource::new(canonical)
             .parse::<String>()
@@ -199,10 +193,10 @@ fn codec_rejoins_dotted_strings_under_expected_string_type() {
         );
     }
 
-    // A redundant pipe wrapper around bare-dotted content is non-canonical.
-    let error = DotosSource::new("(|file.txt|)")
+    // A redundant curly wrapper around bare-dotted content is non-canonical.
+    let error = DotosSource::new("“file.txt”")
         .parse::<String>()
-        .expect_err("pipe wrapper around dotted-bare content rejects");
+        .expect_err("curly wrapper around dotted-bare content rejects");
     assert!(
         error.to_string().contains("use file.txt"),
         "error was {error}"
@@ -210,24 +204,51 @@ fn codec_rejoins_dotted_strings_under_expected_string_type() {
 }
 
 #[test]
-fn codec_rejects_brackets_around_bare_eligible_strings() {
+fn codec_rejects_parenthesized_and_pipe_strings() {
     let error = DotosSource::new("(schema)")
         .parse::<String>()
         .expect_err("redundant inline parentheses reject");
 
     assert!(
-        error.to_string().contains("use schema"),
+        error.to_string().contains("curly quote"),
         "error was {error}"
     );
 
     let error = DotosSource::new("(|schema|)")
         .parse::<String>()
-        .expect_err("redundant pipe parentheses reject");
+        .expect_err("retired pipe text rejects");
 
     assert!(
-        error.to_string().contains("use schema"),
+        error.to_string().contains("pipe has no grammar duty"),
         "error was {error}"
     );
+}
+
+#[test]
+fn curly_strings_nest_escape_and_remove_common_multiline_indentation() {
+    let source = "“\n    outer “nested” \\“literal-open\\” \\\\ slash\n    second line\n”";
+    let decoded = DotosSource::new(source)
+        .parse::<String>()
+        .expect("curly string decodes");
+    assert_eq!(
+        decoded,
+        "outer “nested” “literal-open” \\ slash\nsecond line"
+    );
+
+    let encoded = decoded.to_dotos();
+    assert_eq!(
+        DotosSource::new(&encoded)
+            .parse::<String>()
+            .expect("encoded curly string decodes"),
+        decoded
+    );
+
+    for invalid in ["“unfinished", "“bad\\q”", "“bad\\”"] {
+        assert!(
+            DotosSource::new(invalid).parse::<String>().is_err(),
+            "{invalid:?} rejects"
+        );
+    }
 }
 
 #[test]
@@ -294,11 +315,11 @@ fn codec_decodes_and_encodes_collection_values() {
     assert_eq!(vector, vec!["alpha", "beta", "gamma"]);
     assert_eq!(vector.to_dotos(), "[alpha beta gamma]");
 
-    let option = DotosSource::new("Some.(cache entry)")
+    let option = DotosSource::new("Some.“cache entry”")
         .parse::<Option<String>>()
         .expect("option decodes");
     assert_eq!(option, Some("cache entry".to_owned()));
-    assert_eq!(option.to_dotos(), "Some.(cache entry)");
+    assert_eq!(option.to_dotos(), "Some.“cache entry”");
 
     let none = DotosSource::new("None")
         .parse::<Option<String>>()
@@ -348,12 +369,12 @@ fn codec_decodes_and_encodes_ordered_map_values() {
 
 #[test]
 fn codec_decodes_and_encodes_boxed_values_without_shape_noise() {
-    let boxed = DotosSource::new("(recursive reference)")
+    let boxed = DotosSource::new("“recursive reference”")
         .parse::<Box<String>>()
         .expect("boxed value decodes");
 
     assert_eq!(*boxed, "recursive reference");
-    assert_eq!(boxed.to_dotos(), "(recursive reference)");
+    assert_eq!(boxed.to_dotos(), "“recursive reference”");
 }
 
 #[test]

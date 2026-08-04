@@ -5,7 +5,7 @@
 //! read. [`PrettyLayout`] is an additive projection that reflows the same
 //! document across indented lines without changing the canonical encoding.
 //!
-//! The projection is a pure reformatting. Every leaf — an atom or a pipe-text
+//! The projection is a pure reformatting. Every leaf — an atom or curly text
 //! block — re-emits the exact source bytes it was parsed from, and the layout
 //! only adds whitespace between structural delimiters. DOTOS treats whitespace
 //! as an object separator that is skipped adjacent to delimiters, so pretty
@@ -136,19 +136,24 @@ impl PrettyLayout {
             } if !root_objects.is_empty() && !self.fits(&inline, depth) => {
                 self.render_broken(*delimiter, root_objects, source, depth, rendered);
             }
-            // A dot-application that overflows breaks inside its payload: the
-            // head chain stays glued to the period, and the payload — normally
-            // the delimited block that made the line long — reflows at this
-            // same depth. `Public.Newtype.( … )` keeps `Public.Newtype.(` on
-            // one line and reflows the body.
-            Block::Application { head, payload, .. } if !self.fits(&inline, depth) => {
+            // An application that overflows breaks inside its payload. The
+            // head remains glued to its operator; only a dot has a rendered
+            // separator because angle applications own their angle payload.
+            Block::Application {
+                form,
+                head,
+                payload,
+                ..
+            } if !self.fits(&inline, depth) => {
                 rendered.push_str(&head.render_inline(source));
-                rendered.push('.');
+                if *form == crate::ApplicationForm::Dot {
+                    rendered.push('.');
+                }
                 self.render_block(payload, source, depth, rendered);
             }
             Block::Delimited { .. }
             | Block::Application { .. }
-            | Block::PipeText(_)
+            | Block::CurlyText(_)
             | Block::Atom(_) => {
                 rendered.push_str(&inline);
             }
@@ -228,14 +233,26 @@ impl Block {
                 rendered.push_str(delimiter.closing_text());
                 rendered
             }
-            Self::Application { head, payload, .. } => {
-                format!(
+            Self::Application {
+                form,
+                head,
+                payload,
+                ..
+            } => match form {
+                crate::ApplicationForm::Dot => format!(
                     "{}.{}",
                     head.render_inline(source),
                     payload.render_inline(source)
-                )
-            }
-            Self::PipeText(_) | Self::Atom(_) => self.reemit(source).to_owned(),
+                ),
+                crate::ApplicationForm::Angle => {
+                    format!(
+                        "{}{}",
+                        head.render_inline(source),
+                        payload.render_inline(source)
+                    )
+                }
+            },
+            Self::CurlyText(_) | Self::Atom(_) => self.reemit(source).to_owned(),
         }
     }
 

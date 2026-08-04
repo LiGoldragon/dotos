@@ -1,4 +1,4 @@
-use dotos::{Block, Delimiter, Document, DotosError, ParseMode};
+use dotos::{ApplicationForm, Delimiter, Document, DotosError};
 
 #[test]
 fn parses_ordered_root_objects_and_reemits_from_spans() {
@@ -55,7 +55,7 @@ fn exposes_delimiter_text_and_child_helpers() {
 #[test]
 fn exposes_structural_candidates_without_content_classification() {
     let document = Document::parse(
-        "TypeName field-name camelName schema:module:Type CustomMacro RecordPayload 42 7.5 name@host required* a&b score^2 100% x>y x<y path/to a;b",
+        "TypeName field-name camelName schema:module:Type CustomMacro RecordPayload 42 7.5 name@host required* a&b score^2 100% path/to a;b",
     )
     .expect("valid dotos");
     let roots = document.root_objects();
@@ -114,12 +114,12 @@ fn double_semicolon_is_comment_and_single_semicolon_is_atom_text() {
 }
 
 #[test]
-fn pipe_text_is_delimiter_safe_and_not_recursively_parsed() {
-    let source = "(|macro body with ] and \" and apostrophe's text|)";
+fn curly_text_is_delimiter_safe_and_not_recursively_parsed() {
+    let source = "“macro body with ] and \" and apostrophe's text”";
     let document = Document::parse(source).expect("valid dotos");
     let root = document.root_object_at(0).expect("root");
 
-    assert!(root.is_pipe_text());
+    assert!(root.is_curly_text());
     assert_eq!(
         root.demote_to_string(),
         Some("macro body with ] and \" and apostrophe's text")
@@ -128,55 +128,17 @@ fn pipe_text_is_delimiter_safe_and_not_recursively_parsed() {
 }
 
 #[test]
-fn structural_pipe_mode_leaves_default_pipe_text_unchanged() {
-    let source = "(| Kind (Decision [Reason]) |)";
-    let default = Document::parse(source).expect("default dotos parses pipe text");
-    assert!(default.root_object_at(0).is_some_and(Block::is_pipe_text));
-
-    let structural = Document::parse_with_mode(source, ParseMode::StructuralPipe)
-        .expect("structural pipe dotos parses recursive delimiters");
-    assert!(
-        structural
-            .root_object_at(0)
-            .is_some_and(Block::is_pipe_parenthesis)
-    );
-    assert_eq!(
-        structural.root_object_at(0).unwrap().holds_root_objects(),
-        2
-    );
-
-    let brace = Document::parse_with_mode("{| Entry [Topic [Tag]] |}", ParseMode::StructuralPipe)
-        .expect("structural pipe dotos parses pipe brace");
-    assert!(brace.root_object_at(0).is_some_and(Block::is_pipe_brace));
-    assert_eq!(brace.root_object_at(0).unwrap().holds_root_objects(), 2);
-}
-
-#[test]
-fn bracket_pipe_text_remains_raw_text_in_both_modes() {
-    let source = "[| raw text with a closing bracket ] inside |]";
-    for mode in [ParseMode::Default, ParseMode::StructuralPipe] {
-        let document = Document::parse_with_mode(source, mode).expect("pipe text parses");
-        let block = document.root_object_at(0).expect("single root object");
-        assert!(block.is_pipe_text());
-        assert_eq!(
-            block.demote_to_string(),
-            Some(" raw text with a closing bracket ] inside ")
-        );
+fn pipes_are_rejected_and_angles_are_structural() {
+    for source in ["(| Kind |)", "[| raw |]", "Name|Transformer"] {
+        assert!(Document::parse(source).is_err(), "{source:?} rejects");
     }
-}
 
-#[test]
-fn pipe_text_escapes_single_pipe_close_marker() {
-    let source = "(|macro body can contain \\|) without ending|)";
-    let document = Document::parse(source).expect("valid dotos");
+    let document = Document::parse("Vector<Ordered>").expect("angle application parses");
     let root = document.root_object_at(0).expect("root");
-
-    assert!(root.is_pipe_text());
-    assert_eq!(
-        root.demote_to_string(),
-        Some("macro body can contain |) without ending")
-    );
-    assert_eq!(root.reemit(document.source()), source);
+    assert_eq!(root.application_form(), Some(ApplicationForm::Angle));
+    let (head, payload) = root.as_application().expect("application");
+    assert_eq!(head.demote_to_string(), Some("Vector"));
+    assert!(payload.is_angle());
 }
 
 #[test]

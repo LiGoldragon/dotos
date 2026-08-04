@@ -374,14 +374,14 @@ impl<'block> DotosBlock<'block> {
     }
 
     pub fn parse_string(&self) -> Result<String, DotosDecodeError> {
-        // Pipe text carries a literal, but a pipe wrapper around content that a
-        // simpler canonical form could hold is non-canonical and rejected.
-        if self.block.is_pipe_text() {
+        // Curly text carries a literal, but a quote wrapper around content that
+        // a bare atom can hold is non-canonical and rejected.
+        if self.block.is_curly_text() {
             let text = self
                 .block
                 .demote_to_string()
-                .expect("pipe text demotes to its literal");
-            DotosString::new(text).reject_redundant_delimiter(StringForm::PipeText)?;
+                .expect("curly text demotes to its literal");
+            DotosString::new(text).reject_redundant_delimiter(StringForm::CurlyText)?;
             return Ok(text.to_owned());
         }
         // A bare atom or a dotted chain of atoms is the string's flat text: an
@@ -393,19 +393,9 @@ impl<'block> DotosBlock<'block> {
         if let Some(text) = self.block.dotted_text() {
             return Ok(text);
         }
-        // A parenthesis holds space-joined children, each itself a string.
-        if let Some(root_objects) = self.block.as_delimited(Delimiter::Parenthesis) {
-            let text = root_objects
-                .iter()
-                .map(|block| DotosBlock::new(block).parse_string())
-                .collect::<Result<Vec<_>, _>>()
-                .map(|parts| parts.join(" "))?;
-            DotosString::new(&text).reject_redundant_delimiter(StringForm::Parenthesis)?;
-            return Ok(text);
-        }
         Err(DotosDecodeError::ExpectedDelimited {
             type_name: "String",
-            delimiter: "string atom, dotted application, or parenthesis",
+            delimiter: "string atom, dotted application, or curly quote",
         })
     }
 
@@ -499,8 +489,7 @@ impl<'block> DotosBlock<'block> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StringForm {
     BareDotted,
-    Parenthesis,
-    PipeText,
+    CurlyText,
 }
 
 pub struct DotosString<'value> {
@@ -515,14 +504,13 @@ impl<'value> DotosString<'value> {
     pub fn format(&self) -> String {
         match self.canonical_form() {
             StringForm::BareDotted => self.value.to_owned(),
-            StringForm::Parenthesis => format!("({})", self.value),
-            StringForm::PipeText => format!("(|{}|)", self.escape_pipe_text()),
+            StringForm::CurlyText => format!("“{}”", self.escape_curly_text()),
         }
     }
 
-    /// The single canonical DOTOS form for this string's content. The three forms
-    /// are ordered by how little delimiter they spend, and the first one that can
-    /// carry the content faithfully wins, so each form narrows to its honest role:
+    /// The single canonical DOTOS form for this string's content. The bare form
+    /// wins when it carries the value faithfully; every other value uses curly
+    /// quotes so all text shares one explicit carrier.
     ///
     /// - [`StringForm::BareDotted`] — content that is a period-joined chain of
     ///   bare atoms, so the raw parser rebuilds a dot-application whose flat
@@ -530,20 +518,14 @@ impl<'value> DotosString<'value> {
     ///   `nix.prometheus.goldragon.criome`. A period is a structural operator at
     ///   the raw layer, but an expected `String` reclaims the split text, so a
     ///   period-bearing string no longer needs an escape.
-    /// - [`StringForm::Parenthesis`] — content that is single-space-separated
-    ///   words, each itself bare-dotted, so the space-joined `( … )` form
-    ///   rebuilds it: `alpha beta`, `version 1.2`.
-    /// - [`StringForm::PipeText`] — everything else: delimiter glyphs, newlines
-    ///   and indentation, comment markers, pipe-close markers, irregular
-    ///   whitespace, or the empty string. Only the literal-preserving
-    ///   `( | … | )` form carries these, with close markers escaped.
+    /// - [`StringForm::CurlyText`] — every non-bare value, including spaces,
+    ///   delimiters, comments, newlines, and the empty string. Balanced quotes
+    ///   nest; unmatched quote glyphs and backslashes are escaped.
     fn canonical_form(&self) -> StringForm {
         if self.qualifies_as_bare_dotted_string() {
             StringForm::BareDotted
-        } else if self.qualifies_as_parenthesized_string() {
-            StringForm::Parenthesis
         } else {
-            StringForm::PipeText
+            StringForm::CurlyText
         }
     }
 
@@ -564,27 +546,6 @@ impl<'value> DotosString<'value> {
         })
     }
 
-    /// Whether the content is single-space-separated words that each qualify as
-    /// bare-dotted. The space-joined `( … )` form skips whitespace adjacent to
-    /// object boundaries, so only single ASCII spaces between non-empty words
-    /// survive a round trip: a leading or trailing space, a doubled space, or any
-    /// non-space whitespace forces the literal-preserving pipe form instead.
-    fn qualifies_as_parenthesized_string(&self) -> bool {
-        if !self.value.contains(' ') {
-            return false;
-        }
-        if self
-            .value
-            .chars()
-            .any(|character| character.is_whitespace() && character != ' ')
-        {
-            return false;
-        }
-        self.value
-            .split(' ')
-            .all(|word| DotosString::new(word).qualifies_as_bare_dotted_string())
-    }
-
     fn reject_redundant_delimiter(&self, used: StringForm) -> Result<(), DotosDecodeError> {
         if self.canonical_form() != used {
             return Err(DotosDecodeError::NonCanonicalStringDelimiter {
@@ -595,18 +556,32 @@ impl<'value> DotosString<'value> {
         Ok(())
     }
 
-    fn escape_pipe_text(&self) -> String {
+    fn escape_curly_text(&self) -> String {
+        let characters = self.value.char_indices().collect::<Vec<_>>();
+        let mut matched = vec![false; characters.len()];
+        let mut openings = Vec::new();
+        for (index, (_, character)) in characters.iter().enumerate() {
+            match character {
+                '“' => openings.push(index),
+                '”' => {
+                    if let Some(opening) = openings.pop() {
+                        matched[opening] = true;
+                        matched[index] = true;
+                    }
+                }
+                _ => {}
+            }
+        }
         let mut escaped = String::new();
-        let mut characters = self.value.chars().peekable();
-        while let Some(character) = characters.next() {
-            if character == '\\' {
+        for (index, (_, character)) in characters.iter().enumerate() {
+            if *character == '\\' {
                 escaped.push('\\');
                 escaped.push('\\');
-            } else if character == '|' && characters.peek() == Some(&')') {
+            } else if matches!(character, '“' | '”') && !matched[index] {
                 escaped.push('\\');
-                escaped.push('|');
+                escaped.push(*character);
             } else {
-                escaped.push(character);
+                escaped.push(*character);
             }
         }
         escaped

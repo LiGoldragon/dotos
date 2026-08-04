@@ -189,7 +189,7 @@ fn enum_payload(schema: &InstanceSchema) -> &InstanceSchema {
 
 #[test]
 fn entry_struct_records_each_field_type_in_declared_order() {
-    let source = "{[Technology.Software.Programming.CodeGeneration] Decision (a description) High Low Zero [spirit]}";
+    let source = "{[Technology.Software.Programming.CodeGeneration] Decision “a description” High Low Zero [spirit]}";
     let (value, schema) = trace::<Entry>(source);
     assert_eq!(value.kind, Kind::Decision);
     assert_eq!(value.certainty, Certainty(Magnitude::High));
@@ -227,7 +227,7 @@ fn entry_struct_records_each_field_type_in_declared_order() {
 #[test]
 fn root_input_records_enum_name_and_descends_through_transparent_wrappers() {
     // value: Record.{{ entry-fields }} — Input::Record(Record(RecordRequest { entry })).
-    let source = "Record.{{[Technology.Software.Programming.CodeGeneration] Decision (a description) High Low Zero [spirit]}}";
+    let source = "Record.{{[Technology.Software.Programming.CodeGeneration] Decision “a description” High Low Zero [spirit]}}";
     let (value, schema) = trace::<Input>(source);
     assert!(matches!(value, Input::Record(_)));
 

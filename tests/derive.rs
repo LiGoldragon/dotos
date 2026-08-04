@@ -80,7 +80,7 @@ struct KnownRootDocument {
 
 #[test]
 fn derive_reads_and_writes_record_shapes() {
-    let source = DotosSource::new("{schema (derive works) 7}");
+    let source = DotosSource::new("{schema “derive works” 7}");
     let entry = source.parse::<Entry>().expect("entry decodes");
 
     assert_eq!(
@@ -91,7 +91,7 @@ fn derive_reads_and_writes_record_shapes() {
             magnitude: 7,
         }
     );
-    assert_eq!(entry.to_dotos(), "{schema (derive works) 7}");
+    assert_eq!(entry.to_dotos(), "{schema “derive works” 7}");
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn derive_newtype_chain_over_string_accepts_and_rewrites_dotted_bare_content() {
 
 #[test]
 fn derive_reads_and_writes_enum_shapes() {
-    let record = DotosSource::new("Record.{schema (derive works) 7}")
+    let record = DotosSource::new("Record.{schema “derive works” 7}")
         .parse::<Request>()
         .expect("record request decodes");
     let ping = DotosSource::new("Ping")
@@ -117,7 +117,7 @@ fn derive_reads_and_writes_enum_shapes() {
         .expect("unit request decodes");
 
     assert!(matches!(record, Request::Record(_)));
-    assert_eq!(record.to_dotos(), "Record.{schema (derive works) 7}");
+    assert_eq!(record.to_dotos(), "Record.{schema “derive works” 7}");
     assert_eq!(ping, Request::Ping);
     assert_eq!(ping.to_dotos(), "Ping");
 }
@@ -194,14 +194,14 @@ fn derive_reads_and_writes_known_root_document_bodies() {
 
 #[test]
 fn derive_body_parser_is_wrapper_agnostic_for_struct_types() {
-    let wrapped = Document::parse("(schema (derive works) 7)").expect("wrapped form parses");
+    let wrapped = Document::parse("(schema “derive works” 7)").expect("wrapped form parses");
     let wrapper_root = wrapped.root_object_at(0).expect("one root object");
     let wrapper_body = wrapper_root
         .as_delimited(Delimiter::Parenthesis)
         .expect("wrapper is parenthesized");
     let from_wrapper = Entry::from_body_objects(wrapper_body).expect("body decodes");
 
-    let unwrapped = Document::parse("schema (derive works) 7").expect("body-only form parses");
+    let unwrapped = Document::parse("schema “derive works” 7").expect("body-only form parses");
     let from_file_root = Entry::from_body_objects(unwrapped.root_objects()).expect("body decodes");
 
     assert_eq!(from_wrapper, from_file_root);
