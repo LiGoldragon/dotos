@@ -240,6 +240,23 @@ fn bare_angles_form_nested_quality_applications() {
 }
 
 #[test]
+fn named_quality_pickups_keep_parameter_and_trait_as_distinct_dotted_roles() {
+    let document = Document::parse("Result<Left.Sortable Right.Sortable>")
+        .expect("named quality pickup syntax");
+    let root = document.root_object_at(0).expect("single root");
+    let (_, payload) = root.as_application().expect("outer angle application");
+    let arguments = payload
+        .as_delimited(dotos::Delimiter::Angle)
+        .expect("angle payload");
+    assert_eq!(arguments.len(), 2);
+    for (argument, expected_name) in arguments.iter().zip(["Left", "Right"]) {
+        let (name, quality) = argument.as_application().expect("named dotted pickup");
+        assert_eq!(name.demote_to_string(), Some(expected_name));
+        assert_eq!(quality.demote_to_string(), Some("Sortable"));
+    }
+}
+
+#[test]
 fn transformer_applications_keep_dot_and_parenthesis_as_distinct_shapes() {
     let standalone = Document::parse("Name.Transformer.(Input Output)")
         .expect("standalone transformer application");
