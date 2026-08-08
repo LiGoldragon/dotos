@@ -11,10 +11,11 @@
 use crate::codec::DotosDecodeError;
 use crate::parser::{Atom, Block};
 
-/// The two positions at which a reader may split a dotted prefix off a leading
+/// The three positions at which a reader may split a dotted prefix off a leading
 /// atom. The split algorithm — divide the leading atom at its first top-level
-/// period — is shared; the kinds differ in the head case each accepts, which is
-/// how the reader catches a dotted prefix used in the wrong place.
+/// period — is shared; the kinds differ in the head form each accepts, which is
+/// how the reader catches a dotted prefix used in the wrong place while allowing
+/// generic map keys to retain any parser-valid bare-atom spelling.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DottedExpectation {
     /// A capitalized head naming a type or generic application, as in
@@ -23,6 +24,10 @@ pub enum DottedExpectation {
     /// A leading lowercase name segment: map keys, import path segments, and
     /// field disambiguators.
     Uncapitalized,
+    /// One parser-valid bare atom, irrespective of its first character. This
+    /// is the generic map-key form: `/`, `/boot`, and punctuation-bearing keys
+    /// remain dotted heads without being mistaken for identifier-like names.
+    AnyBareAtom,
 }
 
 impl DottedExpectation {
@@ -31,6 +36,7 @@ impl DottedExpectation {
         match self {
             Self::Capitalized => "capitalized dotted prefix",
             Self::Uncapitalized => "uncapitalized dotted prefix",
+            Self::AnyBareAtom => "bare-atom dotted prefix",
         }
     }
 
@@ -39,6 +45,7 @@ impl DottedExpectation {
             Some(first) => match self {
                 Self::Capitalized => first.is_ascii_uppercase(),
                 Self::Uncapitalized => first.is_ascii_lowercase(),
+                Self::AnyBareAtom => true,
             },
             None => false,
         }
@@ -46,7 +53,7 @@ impl DottedExpectation {
 
     /// Read one dotted entry from the head of a block sequence under this
     /// expectation. The leading block must be a dot-application `key.value`
-    /// whose head is an atom of the accepted case. The key is that head atom
+    /// whose head is an atom accepted by this expectation. The key is that head atom
     /// and the value is the application's payload — which may itself be a
     /// nested application when the value is dotted (`key.a.b.c`), since the raw
     /// grammar binds the period right-associatively. A dotted entry is always

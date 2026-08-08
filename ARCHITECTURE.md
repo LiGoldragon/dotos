@@ -231,12 +231,15 @@ parser classifies no content anywhere.
   type at that position, so no value's content can ever change its parse shape.
   This is what "atomically composable and predictable" means for this mechanism.
 
-There are exactly two dotted-prefix expectation kinds:
+There are exactly three dotted-prefix expectation kinds:
 
 - CAPITALIZED: the head is a capitalized object — a type or generic application
   such as `Vector.X` or `Map.(Key Value)`.
-- UNCAPITALIZED: leading lowercase name segments — map keys, import path
-  segments, and field disambiguators.
+- UNCAPITALIZED: leading lowercase name segments — import path segments and
+  field disambiguators.
+- ANY-BARE-ATOM: a map key is exactly one parser-valid bare atom, independent
+  of identifier case or punctuation. This preserves `key.value` compatibility
+  while admitting keys such as `/.value`, `/boot.value`, and `!@?_.value`.
 
 The mechanism is implemented once in the DOTOS reader and exported as a reusable
 mechanism. Downstream consumers — schema-language above all — reuse the exported
@@ -371,8 +374,9 @@ retiring it would forfeit quotation-safety.
 ## Collection value shapes and section mapping
 
 The codec's collection value shapes are structural DOTOS values: `Vec<T>` is a
-square-bracket block, `BTreeMap<K, V>` is a brace block of dotted-prefix
-`key.value` entries, and `Option<T>` is `None` or `(Some value)`. Those are serialization shapes, not
+square-bracket block, `BTreeMap<K, V>` is a `Map.(...)` application of
+dotted-prefix `key.value` entries, and `Option<T>` is `None` or `Some.value`.
+Those are serialization shapes, not
 schema declaration syntax. The square bracket is and always has been DOTOS's
 vector container delimiter; higher layers may read a vector at a typed position
 as a product or field list, but `[]` itself stays a vector and is never redefined
@@ -382,11 +386,15 @@ direction: parentheses carry enum and variant headers and choices while bracket
 content is a vector that a typed position may read as a field list (Spirit
 `ychx`). At a typed position expecting a string or
 string newtype, bracket content reads as string data — a string is a vector of
-characters — so `[]` is not unconditionally a vector (Spirit `voa8`). The brace
-is a strict key-value map: every entry is exactly one key plus one value written
-as a dotted-prefix `key.value` pair, with no single-token entries and no
-space-separated pair form, and key-value-ness is low-level DOTOS structure that
-macros may consume at schema positions (Spirit `ghw7`).
+characters — so `[]` is not unconditionally a vector (Spirit `voa8`). A map is
+a strict key-value collection: every entry is exactly one key plus one value
+written as a dotted-prefix `key.value` pair, with no single-token entries and
+no space-separated pair form, and key-value-ness is low-level DOTOS structure
+that macros may consume at schema positions (Spirit `ghw7`). The dotted-map
+representation admits only keys whose canonical encoding is one bare atom. It
+therefore supports identifier, path, and punctuation-bearing keys, but not
+dotted, delimited, or composite keys; extending that boundary needs a new
+psyche-authorized map entry syntax rather than a type-specific exception.
 
 DOTOS structs are positional: position plus the read-time schema encodes meaning,
 with no field-name tags. A plain PascalCase token is a unit variant; a

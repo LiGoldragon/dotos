@@ -15,6 +15,25 @@ fn uncapitalized_reads_inline_value_and_consumes_one_block() {
 }
 
 #[test]
+fn any_bare_atom_reads_path_and_punctuation_map_heads() {
+    for (source, expected_key, expected_value) in [
+        ("/.1", "/", "1"),
+        ("/boot.2", "/boot", "2"),
+        ("!@?_.3", "!@?_", "3"),
+        ("alpha.4", "alpha", "4"),
+    ] {
+        let document = Document::parse(source).expect("valid dotted entry");
+        let entry = DottedExpectation::AnyBareAtom
+            .read_entry(document.root_objects())
+            .expect("bare-atom dotted entry reads");
+
+        assert_eq!(entry.key().demote_to_string(), Some(expected_key), "{source}");
+        assert_eq!(entry.value().demote_to_string(), Some(expected_value), "{source}");
+        assert_eq!(entry.consumed(), 1, "{source}");
+    }
+}
+
+#[test]
 fn uncapitalized_reads_a_delimited_payload_value_from_one_application() {
     let document = Document::parse("alpha.(inner value)").expect("valid dotos");
     let entry = DottedExpectation::Uncapitalized

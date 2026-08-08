@@ -368,6 +368,41 @@ fn codec_decodes_and_encodes_ordered_map_values() {
 }
 
 #[test]
+fn maps_round_trip_bare_atom_keys_beyond_identifiers() {
+    let encoded = "Map.(!@?_.3 /.1 /boot.2 alpha.4)";
+    let map = DotosSource::new(encoded)
+        .parse::<BTreeMap<String, u64>>()
+        .expect("bare-atom map keys decode");
+
+    assert_eq!(map.get("!@?_"), Some(&3));
+    assert_eq!(map.get("/"), Some(&1));
+    assert_eq!(map.get("/boot"), Some(&2));
+    assert_eq!(map.get("alpha"), Some(&4));
+    assert_eq!(map.to_dotos(), encoded);
+    assert_eq!(
+        DotosSource::new(&map.to_dotos())
+            .parse::<BTreeMap<String, u64>>()
+            .expect("encoded bare-atom map re-decodes"),
+        map
+    );
+}
+
+#[test]
+fn maps_document_the_dotted_key_representation_limit() {
+    let mut map = BTreeMap::new();
+    map.insert("a.b".to_owned(), 1_u64);
+
+    let encoded = map.to_dotos();
+    assert_eq!(encoded, "Map.(a.b.1)");
+    assert!(
+        DotosSource::new(&encoded)
+            .parse::<BTreeMap<String, u64>>()
+            .is_err(),
+        "a dotted key is ambiguous with a dotted value under the established map syntax"
+    );
+}
+
+#[test]
 fn codec_decodes_and_encodes_boxed_values_without_shape_noise() {
     let boxed = DotosSource::new("“recursive reference”")
         .parse::<Box<String>>()

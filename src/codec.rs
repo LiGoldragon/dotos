@@ -646,8 +646,8 @@ impl<'block> DotosCollection<'block> {
         )?;
         let mut map = BTreeMap::new();
         for entry_block in entries {
-            let entry =
-                DottedExpectation::Uncapitalized.read_entry(std::slice::from_ref(entry_block))?;
+            let entry = DottedExpectation::AnyBareAtom
+                .read_entry(std::slice::from_ref(entry_block))?;
             let key = parse_key(entry.key())?;
             let value = parse_value(entry.value())?;
             map.insert(key, value);
