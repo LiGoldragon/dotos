@@ -27,8 +27,16 @@ fn any_bare_atom_reads_path_and_punctuation_map_heads() {
             .read_entry(document.root_objects())
             .expect("bare-atom dotted entry reads");
 
-        assert_eq!(entry.key().demote_to_string(), Some(expected_key), "{source}");
-        assert_eq!(entry.value().demote_to_string(), Some(expected_value), "{source}");
+        assert_eq!(
+            entry.key().demote_to_string(),
+            Some(expected_key),
+            "{source}"
+        );
+        assert_eq!(
+            entry.value().demote_to_string(),
+            Some(expected_value),
+            "{source}"
+        );
         assert_eq!(entry.consumed(), 1, "{source}");
     }
 }
